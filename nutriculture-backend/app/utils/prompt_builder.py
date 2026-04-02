@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Optional
 
 from app.constants.conditions import HealthCondition
 
@@ -79,18 +80,30 @@ _MEAL_SCHEMA = {
 _RESPONSE_SCHEMA = {"meals": [_MEAL_SCHEMA, _MEAL_SCHEMA, _MEAL_SCHEMA]}
 
 
-def build_meal_plan_prompt(user_profile: dict, plan_date: str) -> str:
+def build_meal_plan_prompt(
+    user_profile: dict,
+    plan_date: str,
+    taste_feedback: Optional[list[dict]] = None,
+    cookbook_modifications: Optional[list[str]] = None,
+) -> str:
     """Construct the full structured prompt for Claude meal plan generation.
 
     Args:
         user_profile: Dict representation of the user's stored profile,
             including demographics, conditions, allergens, cuisines, diet
-            preferences, TDEE, and macro_targets.
+            preferences, TDEE, macro_targets, skill_level, shortcut_mode,
+            and festive event fields.
         plan_date: ISO-8601 date string for the plan (e.g. ``"2025-07-15"``).
+        taste_feedback: Optional list of recent meal feedback dicts used for
+            taste learning adaptation.
+        cookbook_modifications: Optional list of personal modification notes
+            from the user's cookbook, used to carry cooking habits forward.
 
     Returns:
         A single string prompt ready to send to the Claude API.
     """
+    festive_event = user_profile.get("active_festive_event")
+
     sections = [
         _build_header(user_profile, plan_date),
         _build_conditions_section(user_profile),
@@ -98,7 +111,11 @@ def build_meal_plan_prompt(user_profile: dict, plan_date: str) -> str:
         _build_diet_section(user_profile),
         _build_cuisine_section(user_profile),
         _build_macro_section(user_profile),
-        _build_output_instructions(),
+        _build_skill_level_section(user_profile),
+        _build_festive_section(festive_event, user_profile),
+        _build_taste_section(taste_feedback),
+        _build_cookbook_habits_section(cookbook_modifications),
+        _build_output_instructions(festive_event),
     ]
     return "\n\n".join(s for s in sections if s)
 
@@ -216,9 +233,150 @@ def _build_macro_section(profile: dict) -> str:
     return "\n".join(lines)
 
 
-def _build_output_instructions() -> str:
+def _build_skill_level_section(profile: dict) -> str:
+    """Emit cooking complexity constraints based on the user's skill level."""
+    skill = profile.get("skill_level") or "intermediate"
+    shortcut = profile.get("shortcut_mode", False)
+
+    rules = {
+        "beginner": (
+            "Cooking Skill: BEGINNER. "
+            "Each recipe must have ≤ 8 ingredients, ≤ 30 minutes total prep + cook time, "
+            "and use only basic equipment (stovetop, oven, standard pots). "
+            "Stick to simple techniques: boiling, pan-frying, baking, steaming."
+        ),
+        "intermediate": (
+            "Cooking Skill: INTERMEDIATE. "
+            "Recipes may have up to 15 ingredients and up to 60 minutes prep + cook time. "
+            "Basic equipment (blender, food processor) is fine."
+        ),
+        "advanced": (
+            "Cooking Skill: ADVANCED. "
+            "No restrictions on ingredient count, prep time, or technique. "
+            "Complex methods (overnight marinades, tempering whole spices, slow braises) are welcome."
+        ),
+    }
+
+    section = f"## Cooking Skill Level\n{rules.get(skill, rules['intermediate'])}"
+
+    if shortcut and skill == "beginner":
+        section += (
+            "\n\nSHORTCUT MODE ON: For each recipe, flag at least one ingredient or step "
+            "where a store-bought alternative is acceptable "
+            "(e.g. 'use store-bought curry paste instead of grinding from scratch'). "
+            "Add a 'shortcut_tip' field to each meal object with this suggestion."
+        )
+    return section
+
+
+def _build_festive_section(festive_event: Optional[str], profile: dict) -> str:
+    """Emit festive mode instructions that alter meal structure or dish selection."""
+    if not festive_event:
+        return ""
+
+    if festive_event == "ramadan":
+        tdee = profile.get("tdee") or "unknown"
+        return (
+            "## Festive Mode — Ramadan\n"
+            "The user is observing Ramadan. Replace the standard 3-meal structure with:\n"
+            "  1. suhoor — pre-dawn meal (~35 % of daily calories). "
+            "Focus on complex carbs, protein, and healthy fats for sustained energy during the fast. "
+            "Avoid high-sodium foods that cause thirst.\n"
+            "  2. iftar — meal to break the fast (~55 % of daily calories). "
+            "Start with dates and water (traditional), then a balanced main meal. "
+            "Avoid deep-fried or heavily processed iftar foods.\n"
+            "  3. light_snack — optional evening snack (~10 % of daily calories). "
+            "Light, nutritious, easy to digest.\n\n"
+            f"Total daily calories target: {tdee} kcal (redistribute across suhoor/iftar/light_snack).\n"
+            "Use meal_type values: 'suhoor', 'iftar', 'light_snack'."
+        )
+
+    festive_rules = {
+        "diwali": (
+            "The user is celebrating Diwali. Include at least one condition-adapted "
+            "traditional Diwali dish (e.g. a lighter kheer, baked mathri, roasted chivda). "
+            "Name dishes authentically. Keep standard breakfast/lunch/dinner structure."
+        ),
+        "eid": (
+            "The user is celebrating Eid. Include at least one condition-adapted Eid dish "
+            "(e.g. a lean sheer khurma, baked seviyan, low-sodium biryani). "
+            "Halal guidelines apply by default during Eid."
+        ),
+        "lunar_new_year": (
+            "The user is celebrating Lunar New Year. Include at least one traditional dish "
+            "adapted for their conditions (e.g. reduced-sodium dumplings, brown rice noodle soup, "
+            "steamed fish with low-sodium sauce). Keep standard meal structure."
+        ),
+        "passover": (
+            "The user is observing Passover. All recipes must be chametz-free "
+            "(no leavened wheat, barley, oat, spelt, rye). "
+            "Use matzo, quinoa, or potato-based alternatives where needed."
+        ),
+        "navratri": (
+            "The user is observing Navratri. Use only sattvic/vrat-friendly ingredients: "
+            "no onion, no garlic, no regular grains (use kuttu/buckwheat, singhara/water chestnut flour, "
+            "sama rice, sabudana/tapioca). Dairy is permitted."
+        ),
+        "christmas": (
+            "The user is celebrating Christmas (Caribbean/West African tradition). "
+            "Include at least one condition-adapted festive dish "
+            "(e.g. lighter sorrel drink, jerk chicken with reduced sodium, black cake with less sugar, "
+            "plantain with controlled portions). Keep standard meal structure."
+        ),
+    }
+
+    rule = festive_rules.get(festive_event, "")
+    return f"## Festive Mode — {festive_event.replace('_', ' ').title()}\n{rule}"
+
+
+def _build_taste_section(taste_feedback: Optional[list[dict]]) -> str:
+    """Inject recent taste feedback history so Claude can adapt to preferences."""
+    if not taste_feedback:
+        return ""
+
+    lines = ["## User Taste Preferences (from recent meal feedback)"]
+    lines.append(
+        "Adapt the meal plan based on this history. "
+        "Avoid dishes similar to skipped ones; lean toward styles of saved ones.\n"
+    )
+    for entry in taste_feedback:
+        action = entry.get("action", "").upper()
+        dish = entry.get("dish_name", "")
+        cuisine = entry.get("cuisine_tag", "")
+        notes = entry.get("modification_notes", "")
+        line = f"- [{action}] {dish} ({cuisine})"
+        if notes:
+            line += f" | User modified: {notes}"
+        lines.append(line)
+
+    return "\n".join(lines)
+
+
+def _build_cookbook_habits_section(modifications: Optional[list[str]]) -> str:
+    """Inject personal cooking habits from the user's saved cookbook modifications."""
+    if not modifications:
+        return ""
+
+    lines = ["## Personal Cooking Habits (from user's cookbook)"]
+    lines.append("Apply these known preferences when generating recipes:\n")
+    for note in modifications:
+        lines.append(f"- {note}")
+    return "\n".join(lines)
+
+
+def _build_output_instructions(festive_event: Optional[str] = None) -> str:
     """Emit the strict JSON-only output instructions and schema."""
     schema_str = json.dumps(_RESPONSE_SCHEMA, indent=2)
+
+    if festive_event == "ramadan":
+        meal_rule = "Include exactly 3 meals with meal_type values: 'suhoor', 'iftar', 'light_snack'."
+    else:
+        meal_rule = "Include exactly 3 meals: breakfast, lunch, dinner."
+
+    shortcut_rule = (
+        "7. If shortcut_mode is active, add a 'shortcut_tip' string field to each meal.\n"
+    )
+
     return (
         "## Output Instructions\n"
         "Respond with ONLY a valid JSON object — no prose, no markdown fences, "
@@ -226,11 +384,12 @@ def _build_output_instructions() -> str:
         "The JSON must have exactly this structure:\n"
         f"{schema_str}\n\n"
         "Rules:\n"
-        "1. Include exactly 3 meals: breakfast, lunch, dinner.\n"
+        f"1. {meal_rule}\n"
         "2. All numeric fields (calories, protein_g, etc.) must be numbers, not strings.\n"
         "3. glycemic_notes must be a non-empty string for diabetes or PCOS profiles; "
         "   null otherwise.\n"
         "4. Every ingredient must have name, quantity (number), and unit (string).\n"
         "5. Verify that NO ingredient contains any of the declared allergens.\n"
-        "6. Verify that the sum of meal macros approximates the daily macro targets."
+        "6. Verify that the sum of meal macros approximates the daily macro targets.\n"
+        f"{shortcut_rule}"
     )

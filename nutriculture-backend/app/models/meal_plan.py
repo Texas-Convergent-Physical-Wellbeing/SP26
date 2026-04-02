@@ -43,7 +43,10 @@ class MealMicros(BaseModel):
 class MealObject(BaseModel):
     """A single meal (breakfast, lunch, or dinner) within a daily plan."""
 
-    meal_type: str = Field(..., pattern="^(breakfast|lunch|dinner)$")
+    meal_type: str = Field(
+        ...,
+        pattern="^(breakfast|lunch|dinner|suhoor|iftar|light_snack)$",
+    )
     dish_name: str
     cuisine_tag: str
     original_dish: str

@@ -10,6 +10,7 @@ from supabase._async.client import AsyncClient
 
 from app.models.meal_plan import MealPlanResponse, MealPlanListResponse, MealObject
 from app.services import user_service, llm_service
+from app.services import taste_service, cookbook_service
 from app.utils.prompt_builder import build_meal_plan_prompt
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,16 @@ async def generate_and_store_plan(
     profile = await user_service.get_profile(user_id, db)
     profile_dict = profile.model_dump()
 
-    prompt = build_meal_plan_prompt(profile_dict, plan_date.isoformat())
+    # Fetch taste feedback and cookbook habits to enrich the prompt
+    taste_feedback = await taste_service.get_recent_feedback(user_id, db)
+    cookbook_modifications = await cookbook_service.get_modifications_for_prompt(user_id, db)
+
+    prompt = build_meal_plan_prompt(
+        profile_dict,
+        plan_date.isoformat(),
+        taste_feedback=taste_feedback or None,
+        cookbook_modifications=cookbook_modifications or None,
+    )
     llm_response = await llm_service.generate_meal_plan(prompt)
 
     meals_raw = llm_response.get("meals", [])
@@ -146,8 +156,16 @@ async def list_plans(
 # ---------------------------------------------------------------------------
 
 
+_STANDARD_MEAL_TYPES = {"breakfast", "lunch", "dinner"}
+_RAMADAN_MEAL_TYPES = {"suhoor", "iftar", "light_snack"}
+_ALL_VALID_MEAL_TYPES = _STANDARD_MEAL_TYPES | _RAMADAN_MEAL_TYPES
+
+
 def _validate_meals_structure(meals: list) -> None:
     """Confirm the LLM response contains exactly 3 valid meal objects.
+
+    Accepts both standard meal types (breakfast/lunch/dinner) and Ramadan
+    meal types (suhoor/iftar/light_snack).
 
     Args:
         meals: Raw list parsed from the LLM JSON response.
@@ -164,15 +182,14 @@ def _validate_meals_structure(meals: list) -> None:
                 "detail": f"Expected 3 meals, got {len(meals) if isinstance(meals, list) else type(meals).__name__}.",
             },
         )
-    required_types = {"breakfast", "lunch", "dinner"}
     returned_types = {m.get("meal_type") for m in meals if isinstance(m, dict)}
-    if returned_types != required_types:
+    if not (returned_types == _STANDARD_MEAL_TYPES or returned_types == _RAMADAN_MEAL_TYPES):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
-                "error": "Missing meal types",
+                "error": "Invalid meal types",
                 "code": "LLM_MISSING_MEAL_TYPES",
-                "detail": f"Expected {required_types}, got {returned_types}.",
+                "detail": f"Expected standard or Ramadan meal types, got {returned_types}.",
             },
         )
 

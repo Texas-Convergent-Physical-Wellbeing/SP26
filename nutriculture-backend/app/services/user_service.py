@@ -7,7 +7,12 @@ import logging
 from fastapi import HTTPException, status
 from supabase._async.client import AsyncClient
 
-from app.models.user import UserProfileUpsertRequest, UserProfileResponse, MacroTargets
+from app.models.user import (
+    SetFestiveEventRequest,
+    UserProfileUpsertRequest,
+    UserProfileResponse,
+    MacroTargets,
+)
 from app.utils.macro_calculator import calculate_bmr, calculate_tdee, calculate_macro_targets
 
 logger = logging.getLogger(__name__)
@@ -54,6 +59,8 @@ async def create_or_update_profile(
         "allergens": [a.value for a in request.allergens],
         "cuisines": [c.value for c in request.cuisines],
         "diet_preferences": [d.value for d in request.diet_preferences],
+        "skill_level": request.skill_level.value,
+        "shortcut_mode": request.shortcut_mode,
         "tdee": tdee,
         "macro_targets": macro_dict,
     }
@@ -100,6 +107,65 @@ async def get_profile(user_id: str, db: AsyncClient) -> UserProfileResponse:
         )
 
     return _row_to_response(result.data)
+
+
+async def set_festive_event(
+    user_id: str,
+    request: SetFestiveEventRequest,
+    db: AsyncClient,
+) -> UserProfileResponse:
+    """Activate a festive mode on the user's profile.
+
+    Args:
+        user_id: Authenticated user UUID.
+        request: Festive event payload with event type and date range.
+        db: Supabase async client.
+
+    Returns:
+        Updated ``UserProfileResponse`` with festive fields set.
+
+    Raises:
+        HTTPException: 404 if the user has no profile.
+    """
+    await get_profile(user_id, db)  # existence check
+    update = {
+        "active_festive_event": request.event.value,
+        "festive_event_start": request.start_date,
+        "festive_event_end": request.end_date,
+    }
+    result = (
+        await db.table(_TABLE)
+        .update(update)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    row = _extract_single(result, "set festive event")
+    return _row_to_response(row)
+
+
+async def clear_festive_event(user_id: str, db: AsyncClient) -> UserProfileResponse:
+    """Deactivate the current festive mode on the user's profile.
+
+    Args:
+        user_id: Authenticated user UUID.
+        db: Supabase async client.
+
+    Returns:
+        Updated ``UserProfileResponse`` with festive fields cleared.
+    """
+    await get_profile(user_id, db)  # existence check
+    result = (
+        await db.table(_TABLE)
+        .update({
+            "active_festive_event": None,
+            "festive_event_start": None,
+            "festive_event_end": None,
+        })
+        .eq("user_id", user_id)
+        .execute()
+    )
+    row = _extract_single(result, "clear festive event")
+    return _row_to_response(row)
 
 
 def validate_cuisines_limit(cuisines: list) -> None:
@@ -157,6 +223,11 @@ def _row_to_response(row: dict) -> UserProfileResponse:
         allergens=row.get("allergens") or [],
         cuisines=row.get("cuisines") or [],
         diet_preferences=row.get("diet_preferences") or [],
+        skill_level=row.get("skill_level") or "intermediate",
+        shortcut_mode=row.get("shortcut_mode") or False,
+        active_festive_event=row.get("active_festive_event"),
+        festive_event_start=str(row["festive_event_start"]) if row.get("festive_event_start") else None,
+        festive_event_end=str(row["festive_event_end"]) if row.get("festive_event_end") else None,
         tdee=row.get("tdee"),
         macro_targets=macro_targets,
         created_at=row["created_at"],

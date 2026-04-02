@@ -8,6 +8,7 @@ from supabase._async.client import AsyncClient
 from app.db.client import get_client
 from app.models.user import (
     MacroTargetsResponse,
+    SetFestiveEventRequest,
     UserProfileResponse,
     UserProfileUpsertRequest,
     MacroTargets,
@@ -70,4 +71,45 @@ async def get_macro_targets(
     return MacroTargetsResponse(
         macro_targets=MacroTargets(**profile.macro_targets.model_dump()),
         tdee=profile.tdee or 0.0,
+    )
+
+
+@router.put(
+    "/profile/festive",
+    response_model=UserProfileResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Activate a festive mode on the user's profile",
+)
+async def set_festive_event(
+    request: SetFestiveEventRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncClient = Depends(get_client),
+) -> UserProfileResponse:
+    """Set an active festive event (e.g. Ramadan, Diwali) on the user's profile.
+
+    While a festive event is active, meal plan generation adapts accordingly —
+    Ramadan replaces the meal structure with suhoor/iftar/light_snack and
+    redistributes calories; other events add condition-adapted festive dishes.
+    """
+    return await user_service.set_festive_event(
+        user_id=current_user["id"],
+        request=request,
+        db=db,
+    )
+
+
+@router.delete(
+    "/profile/festive",
+    response_model=UserProfileResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Clear the active festive mode",
+)
+async def clear_festive_event(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncClient = Depends(get_client),
+) -> UserProfileResponse:
+    """Remove the active festive event and return to standard meal planning."""
+    return await user_service.clear_festive_event(
+        user_id=current_user["id"],
+        db=db,
     )

@@ -11,6 +11,8 @@ from app.constants.allergens import Allergen
 from app.constants.conditions import HealthCondition
 from app.constants.cuisines import Cuisine
 from app.constants.diets import DietPreference
+from app.constants.festive_events import FestiveEvent
+from app.constants.skill_levels import SkillLevel
 
 # ---------------------------------------------------------------------------
 # Sub-models
@@ -53,6 +55,8 @@ class UserProfileUpsertRequest(BaseModel):
     allergens: list[Allergen] = Field(default_factory=list)
     cuisines: list[Cuisine] = Field(default_factory=list)
     diet_preferences: list[DietPreference] = Field(default_factory=list)
+    skill_level: SkillLevel = SkillLevel.Intermediate
+    shortcut_mode: bool = False
 
     @field_validator("cuisines")
     @classmethod
@@ -68,6 +72,14 @@ class UserProfileUpsertRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class SetFestiveEventRequest(BaseModel):
+    """Payload for PUT /api/v1/users/profile/festive."""
+
+    event: FestiveEvent
+    start_date: str = Field(..., description="ISO-8601 date e.g. 2025-03-01")
+    end_date: str = Field(..., description="ISO-8601 date e.g. 2025-03-30")
+
+
 class UserProfileResponse(BaseModel):
     """Full user profile returned from GET /api/v1/users/profile."""
 
@@ -81,6 +93,11 @@ class UserProfileResponse(BaseModel):
     allergens: list[str]
     cuisines: list[str]
     diet_preferences: list[str]
+    skill_level: str
+    shortcut_mode: bool
+    active_festive_event: Optional[str]
+    festive_event_start: Optional[str]
+    festive_event_end: Optional[str]
     tdee: Optional[float]
     macro_targets: Optional[MacroTargets]
     created_at: datetime

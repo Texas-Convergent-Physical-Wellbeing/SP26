@@ -84,6 +84,14 @@ async def test_generate_meal_plan_success(async_client, mock_db):
     )
 
     with patch(
+        "app.services.meal_plan_service.taste_service.get_recent_feedback",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch(
+        "app.services.meal_plan_service.cookbook_service.get_modifications_for_prompt",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch(
         "app.services.llm_service.generate_meal_plan",
         new_callable=AsyncMock,
         return_value={"meals": FAKE_MEALS},
@@ -120,6 +128,14 @@ async def test_allergen_not_in_generated_ingredients(async_client, mock_db):
     )
 
     with patch(
+        "app.services.meal_plan_service.taste_service.get_recent_feedback",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch(
+        "app.services.meal_plan_service.cookbook_service.get_modifications_for_prompt",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch(
         "app.services.llm_service.generate_meal_plan",
         new_callable=AsyncMock,
         return_value={"meals": safe_meals},
@@ -169,6 +185,14 @@ async def test_llm_json_parse_failure_retries_then_raises_502(async_client, mock
     )
 
     with patch(
+        "app.services.meal_plan_service.taste_service.get_recent_feedback",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch(
+        "app.services.meal_plan_service.cookbook_service.get_modifications_for_prompt",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch(
         "app.services.llm_service._call_claude",
         new_callable=AsyncMock,
         return_value="This is not JSON at all.",

@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.db.client import close_supabase_client, health_check, init_supabase_client
-from app.routers import community, meal_plans, users
+from app.routers import community, cookbook, ingredients, meal_plans, taste, users
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +121,9 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(users.router)
     app.include_router(meal_plans.router)
     app.include_router(community.router)
+    app.include_router(taste.router)
+    app.include_router(cookbook.router)
+    app.include_router(ingredients.router)
 
 
 # ---------------------------------------------------------------------------
