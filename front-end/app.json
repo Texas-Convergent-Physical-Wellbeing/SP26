@@ -4,7 +4,7 @@
     "slug": "NuTradish",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/logo.jpeg",
     "scheme": "nutradish",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -39,6 +39,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "splash": {
+      "image": "./assets/images/logo.jpeg",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
     }
   }
 }
