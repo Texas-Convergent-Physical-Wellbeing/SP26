@@ -1,21 +1,22 @@
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   PanResponder,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { ActivityLevel } from '@/services/api';
-import { quizStore } from '@/services/quiz-store';
+import { hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -69,6 +70,8 @@ function ProgressBar({ step }: { step: number }) {
 
 export default function QuizCaloriesScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const topPad = Math.max(insets.top, 12) + 8;
 
   const [sexIdx, setSexIdx] = useState<number | null>(null);
   const [showSexOptions, setShowSexOptions] = useState(false);
@@ -77,8 +80,36 @@ export default function QuizCaloriesScreen() {
   const [height, setHeight] = useState('');
   const [activity, setActivity] = useState<ActivityLevel>('moderately_active');
   const [manualCalories, setManualCalories] = useState<number | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      await hydrateQuizFromServer();
+      if (!alive) return;
+      const idx = SEX_OPTIONS.findIndex(s => s.toLowerCase() === quizStore.sex);
+      setSexIdx(idx >= 0 ? idx : null);
+      setAge(quizStore.age ? String(quizStore.age) : '');
+      setWeight(quizStore.weight_kg ? String(quizStore.weight_kg) : '');
+      setHeight(quizStore.height_cm ? String(quizStore.height_cm) : '');
+      setActivity(quizStore.activity_level);
+      setHydrated(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const sex = sexIdx !== null ? SEX_OPTIONS[sexIdx].toLowerCase() : 'male';
+
+  // Reset manual override whenever any biometric input or activity changes
+  // so the TDEE recommendation always re-calculates automatically.
+  useEffect(() => {
+    if (!hydrated) return;
+    setManualCalories(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sex, age, weight, height, activity]);
+
   const tdee = calcTDEE(sex, Number(age), Number(weight), Number(height), activity);
   const displayCalories = manualCalories ?? tdee ?? 2100;
   const calorieProgress = Math.max(0, Math.min(1, (displayCalories - CALORIE_MIN) / (CALORIE_MAX - CALORIE_MIN)));
@@ -118,9 +149,17 @@ export default function QuizCaloriesScreen() {
     router.push('/quiz-cuisines');
   };
 
+  if (!hydrated) {
+    return (
+      <View style={[styles.root, { paddingTop: topPad }, styles.hydrateCenter]}>
+        <ActivityIndicator size="large" color={ORANGE} />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.root}>
-      <SafeAreaView style={styles.safe}>
+    <View style={[styles.root, { paddingTop: topPad }]}>
+      <SafeAreaView style={styles.safe} edges={['bottom', 'left', 'right']}>
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.back}>
@@ -131,7 +170,11 @@ export default function QuizCaloriesScreen() {
 
         <ProgressBar step={2} />
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
           {/* Sex */}
           <ThemedText style={styles.label}>Sex</ThemedText>
           <TouchableOpacity
@@ -157,35 +200,35 @@ export default function QuizCaloriesScreen() {
           )}
 
           {/* Age */}
-          <ThemedText style={styles.label}>Age</ThemedText>
+          <ThemedText style={styles.label}>Age (years)</ThemedText>
           <TextInput
             style={styles.input}
             value={age}
             onChangeText={setAge}
             keyboardType="numeric"
-            placeholder="Placeholder"
+            placeholder="e.g. 28"
             placeholderTextColor={MUTED}
           />
 
           {/* Weight */}
-          <ThemedText style={styles.label}>Weight</ThemedText>
+          <ThemedText style={styles.label}>Weight (kg)</ThemedText>
           <TextInput
             style={styles.input}
             value={weight}
             onChangeText={setWeight}
             keyboardType="decimal-pad"
-            placeholder="Placeholder"
+            placeholder="e.g. 70"
             placeholderTextColor={MUTED}
           />
 
           {/* Height */}
-          <ThemedText style={styles.label}>Height</ThemedText>
+          <ThemedText style={styles.label}>Height (cm)</ThemedText>
           <TextInput
             style={styles.input}
             value={height}
             onChangeText={setHeight}
             keyboardType="decimal-pad"
-            placeholder="Placeholder"
+            placeholder="e.g. 175"
             placeholderTextColor={MUTED}
           />
 
@@ -223,9 +266,14 @@ export default function QuizCaloriesScreen() {
           </View>
 
           {/* Calories (Recommended) */}
-          <ThemedText style={[styles.label]}>
-            Calories (Recommended)
-          </ThemedText>
+          <View style={styles.calorieLabelRow}>
+            <ThemedText style={[styles.label, styles.labelNoMb]}>Target calories (kcal / day)</ThemedText>
+            {manualCalories !== null && (
+              <TouchableOpacity onPress={() => setManualCalories(null)} hitSlop={10}>
+                <ThemedText style={styles.autoResetLink}>Auto</ThemedText>
+              </TouchableOpacity>
+            )}
+          </View>
           <View
             ref={calorieSliderRef}
             style={styles.calorieSliderWrapper}
@@ -241,10 +289,16 @@ export default function QuizCaloriesScreen() {
             <View style={[styles.calorieTrackFilled, { width: `${calorieProgress * 100}%` }]} />
             <View style={[styles.calorieDot, { left: `${calorieProgress * 100}%` }]} />
           </View>
-          <ThemedText style={styles.calorieValue}>{displayCalories}</ThemedText>
+          <View style={styles.calorieValueBlock}>
+            <ThemedText style={styles.calorieValue}>{displayCalories}</ThemedText>
+            <ThemedText style={styles.calorieUnit}> kcal</ThemedText>
+            {manualCalories !== null && (
+              <ThemedText style={styles.manualTag}> (manual)</ThemedText>
+            )}
+          </View>
         </ScrollView>
 
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.four) }]}>
           <TouchableOpacity style={styles.nextBtn} onPress={onNext} activeOpacity={0.85}>
             <Image
               // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -262,8 +316,10 @@ const DOT_SIZE = 11;
 const TRACK_HEIGHT = 6;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: CREAM, paddingTop: '15%' },
+  root: { flex: 1, backgroundColor: CREAM },
+  hydrateCenter: { justifyContent: 'center', alignItems: 'center' },
   safe: { flex: 1 },
+  scroll: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -282,8 +338,13 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
   },
   pill: { flex: 1, height: 11, borderRadius: 60 },
-  content: { paddingHorizontal: Spacing.four, paddingBottom: 100 },
+  content: {
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.six + 88,
+    flexGrow: 1,
+  },
   label: { fontSize: 16, fontWeight: '700', color: ORANGE, marginBottom: Spacing.two },
+  labelNoMb: { marginBottom: 0 },
 
   /* Sex dropdown */
   dropdown: {
@@ -372,12 +433,23 @@ const styles = StyleSheet.create({
   },
   activityLabelText: { fontSize: 13, color: '#1e1e1e' },
 
+  calorieLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.two,
+  },
+  autoResetLink: {
+    fontSize: 14,
+    color: ORANGE,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
   /* Calories */
-  calorieLabel: { fontWeight: '400' },
   calorieSliderWrapper: {
     height: 40,
     justifyContent: 'center',
-    marginBottom: Spacing.one,
+    marginBottom: Spacing.two,
     marginHorizontal: 2,
   },
   calorieTrackBackground: {
@@ -409,15 +481,36 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#1e1e1e',
   },
+  calorieValueBlock: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    marginTop: Spacing.three,
+    marginBottom: Spacing.five,
+    minHeight: 44,
+  },
   calorieValue: {
-    fontSize: 16,
+    fontSize: 28,
+    fontWeight: '700',
     color: '#1e1e1e',
-    textAlign: 'center',
-    marginBottom: Spacing.four,
+    lineHeight: 36,
+  },
+  calorieUnit: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#555',
+    lineHeight: 36,
   },
 
+  manualTag: {
+    fontSize: 14,
+    color: MUTED,
+    lineHeight: 36,
+    fontStyle: 'italic',
+  },
   /* Footer / next button */
-  footer: { paddingHorizontal: Spacing.four, paddingBottom: Spacing.four, marginBottom: '13%', },
+  footer: { paddingHorizontal: Spacing.four, marginTop: Spacing.two },
     nextBtn: {
       backgroundColor: ORANGE,
       borderRadius: 100,

@@ -1,16 +1,21 @@
 import { useRouter } from 'expo-router';
 import { Dimensions, Image, ImageBackground, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 
-export default function OnboardingScreen() {
+export default function WelcomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.root}>
-      <ImageBackground source={ require('../../assets/images/onboarding_cover.png') } style={styles.hero}/>
+      <ImageBackground
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        source={require('../../assets/images/onboarding_cover.png')}
+        style={styles.hero}
+      />
       <Image
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         source={require('../../assets/images/onboarding_top.png')}
@@ -18,15 +23,18 @@ export default function OnboardingScreen() {
         resizeMode="stretch"
       />
 
-      <View style={styles.card}>
+      <View style={[styles.card, { paddingBottom: Math.max(insets.bottom, Spacing.three) }]}>
         <SafeAreaView edges={['bottom']} style={styles.cardInner}>
-          <ThemedText style={styles.title}>Welcome!</ThemedText>
+          <ThemedText style={styles.title}>NuTradish</ThemedText>
           <ThemedText style={styles.subtitle}>
-            Help us make more personalized recommendations by taking a short quiz!
+            Personalized meal planning that respects your culture and health goals.
           </ThemedText>
 
-          <TouchableOpacity style={styles.button} onPress={() => router.push('/quiz-goals')} activeOpacity={0.85}>
-            <ThemedText style={styles.buttonText}>Get Started</ThemedText>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => router.push('/login')}
+            activeOpacity={0.85}>
+            <ThemedText style={styles.primaryButtonText}>Get Started</ThemedText>
           </TouchableOpacity>
         </SafeAreaView>
       </View>
@@ -40,7 +48,7 @@ const BRAND_ORANGE = '#E2652F';
 const CARD_BG = '#FFF4DB';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const CARD_HEIGHT = SCREEN_HEIGHT * 0.4;
+const CARD_HEIGHT = SCREEN_HEIGHT * 0.45;
 
 const styles = StyleSheet.create({
   root: {
@@ -74,34 +82,36 @@ const styles = StyleSheet.create({
   },
   cardInner: {
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     gap: Spacing.three,
-    paddingBottom: Spacing.four,
-    paddingTop: '40%',
+    paddingHorizontal: Spacing.two,
+    paddingTop: Spacing.four,
+    paddingBottom: Spacing.two,
+    flex: 1,
   },
   title: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: BRAND_BROWN,
+    fontSize: 34,
+    fontWeight: '800',
+    color: BRAND_ORANGE,
     textAlign: 'center',
+    lineHeight: 40,
   },
   subtitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '500',
     color: BRAND_BROWN,
     textAlign: 'center',
-    lineHeight: 28,
-    marginTop: 10,
+    lineHeight: 26,
+    marginBottom: Spacing.two,
   },
-  button: {
+  primaryButton: {
     backgroundColor: BRAND_ORANGE,
     borderRadius: 100,
     paddingVertical: Spacing.three,
     width: '100%',
     alignItems: 'center',
-    marginTop: 10,
   },
-  buttonText: {
+  primaryButtonText: {
     fontSize: 20,
     fontWeight: '700',
     color: BRAND_WHITE,

@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Pressable,
   SafeAreaView,
@@ -12,8 +13,7 @@ import {
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { quizStore } from '@/services/quiz-store';
-import { processInsetInline } from 'react-native-reanimated/lib/typescript/common';
+import { hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -43,6 +43,20 @@ function ProgressBar({ step }: { step: number }) {
 export default function QuizGoalsScreen() {
   const router = useRouter();
   const [selected, setSelected] = useState<string[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      await hydrateQuizFromServer();
+      if (!alive) return;
+      setSelected([...quizStore.goals]);
+      setHydrated(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const toggle = (goal: string) => {
     setSelected(prev =>
@@ -54,6 +68,14 @@ export default function QuizGoalsScreen() {
     quizStore.goals = selected;
     router.push('/quiz-calories');
   };
+
+  if (!hydrated) {
+    return (
+      <View style={[styles.root, styles.hydrateCenter]}>
+        <ActivityIndicator size="large" color={ORANGE} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -110,6 +132,7 @@ export default function QuizGoalsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: CREAM, paddingTop: '15%', },
+  hydrateCenter: { justifyContent: 'center', alignItems: 'center' },
   safe: { flex: 1 },
   header: {
     flexDirection: 'row',

@@ -11,9 +11,11 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "~2.2.0",
     "@react-navigation/bottom-tabs": "^7.15.5",
     "@react-navigation/elements": "^2.9.10",
     "@react-navigation/native": "^7.1.33",
+    "@supabase/supabase-js": "^2.103.0",
     "expo": "~55.0.12",
     "expo-constants": "~55.0.12",
     "expo-device": "~55.0.13",
@@ -40,6 +42,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~55.0.0",
     "typescript": "~5.9.2"
   },
   "private": true

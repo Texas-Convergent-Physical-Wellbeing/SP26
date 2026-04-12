@@ -1,11 +1,11 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Image, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { Cuisine } from '@/services/api';
-import { quizStore } from '@/services/quiz-store';
+import { hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -13,14 +13,14 @@ const MUTED = '#ffb259';
 const SANDY = '#efd3a9';
 
 const CUISINES: { label: string; value: Cuisine }[] = [
-  { label: 'Italian', value: 'italian' },
-  { label: 'Chinese', value: 'chinese' },
-  { label: 'Mexican', value: 'mexican' },
-  { label: 'Indian', value: 'indian' },
-  { label: 'Thai', value: 'thai' },
-  { label: 'Greek', value: 'greek' },
-  { label: 'French', value: 'french' },
-  { label: 'Other:____', value: 'other' },
+  { label: 'South Asian', value: 'south_asian' },
+  { label: 'West African', value: 'west_african' },
+  { label: 'East Asian', value: 'east_asian' },
+  { label: 'Latin American', value: 'latin_american' },
+  { label: 'Middle Eastern', value: 'middle_eastern' },
+  { label: 'Mediterranean', value: 'mediterranean' },
+  { label: 'Southeast Asian', value: 'southeast_asian' },
+  { label: 'Caribbean', value: 'caribbean' },
 ];
 
 const MAX_CUISINES = 3;
@@ -38,7 +38,20 @@ function ProgressBar({ step }: { step: number }) {
 export default function QuizCuisinesScreen() {
   const router = useRouter();
   const [selected, setSelected] = useState<Cuisine[]>([]);
-  const [otherText, setOtherText] = useState('');
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      await hydrateQuizFromServer();
+      if (!alive) return;
+      setSelected([...quizStore.cuisines]);
+      setHydrated(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const toggle = (cuisine: Cuisine) => {
     setSelected(prev => {
@@ -55,6 +68,14 @@ export default function QuizCuisinesScreen() {
     quizStore.cuisines = selected;
     router.push('/quiz-conditions');
   };
+
+  if (!hydrated) {
+    return (
+      <View style={[styles.root, styles.hydrateCenter]}>
+        <ActivityIndicator size="large" color={ORANGE} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -79,29 +100,16 @@ export default function QuizCuisinesScreen() {
           <View style={styles.grid}>
             {CUISINES.map(c => {
               const isSelected = selected.includes(c.value);
-              const isOther = c.value === 'other';
 
               return (
                 <TouchableOpacity
                   key={c.value}
                   style={[styles.tile, isSelected && styles.tileSelected]}
                   onPress={() => toggle(c.value)}
-                  activeOpacity={isOther && isSelected ? 1 : 0.8}>
-                  {isOther && isSelected ? (
-                    <TextInput
-                      style={styles.otherInput}
-                      value={otherText}
-                      onChangeText={setOtherText}
-                      placeholder="Type cuisine..."
-                      placeholderTextColor="rgba(255,255,255,0.6)"
-                      autoFocus
-                      returnKeyType="done"
-                    />
-                  ) : (
-                    <ThemedText style={[styles.tileLabel, isSelected && styles.tileLabelSelected]}>
-                      {isOther && otherText ? `Other: ${otherText}` : c.label}
-                    </ThemedText>
-                  )}
+                  activeOpacity={0.8}>
+                  <ThemedText style={[styles.tileLabel, isSelected && styles.tileLabelSelected]}>
+                    {c.label}
+                  </ThemedText>
                 </TouchableOpacity>
               );
             })}
@@ -124,6 +132,7 @@ export default function QuizCuisinesScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: CREAM, paddingTop: '15%', },
+  hydrateCenter: { justifyContent: 'center', alignItems: 'center' },
   safe: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -180,14 +189,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   tileLabelSelected: { color: '#fff' },
-  otherInput: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fff',
-    textAlign: 'center',
-    width: '100%',
-    paddingHorizontal: Spacing.two,
-  },
   footer: { paddingHorizontal: Spacing.four, paddingBottom: Spacing.four, marginBottom: '13%', },
     nextBtn: {
       backgroundColor: ORANGE,
