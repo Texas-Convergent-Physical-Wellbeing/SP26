@@ -122,6 +122,15 @@ export type Cuisine =
 
 export type DietPreference = 'halal' | 'kosher' | 'vegetarian' | 'vegan' | 'none';
 
+export type FestiveEvent =
+  | 'ramadan'
+  | 'diwali'
+  | 'eid'
+  | 'lunar_new_year'
+  | 'passover'
+  | 'navratri'
+  | 'christmas';
+
 export type Allergen =
   | 'celery' | 'gluten' | 'crustaceans' | 'eggs' | 'fish' | 'lupin'
   | 'milk' | 'molluscs' | 'mustard' | 'peanuts' | 'sesame'
@@ -192,4 +201,10 @@ export const api = {
 
   getMacros: () =>
     req<MacroTargetsResponse>('GET', '/api/v1/users/profile/macros'),
+
+  setFestiveEvent: (event: FestiveEvent, start_date: string, end_date: string) =>
+    req<UserProfileResponse>('PUT', '/api/v1/users/profile/festive', { event, start_date, end_date }),
+
+  clearFestiveEvent: () =>
+    req<UserProfileResponse>('DELETE', '/api/v1/users/profile/festive'),
 };

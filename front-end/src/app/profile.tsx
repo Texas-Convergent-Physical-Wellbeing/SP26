@@ -20,7 +20,7 @@ import { Image } from 'expo-image';
 import { ThemedText } from '@/components/themed-text';
 import { WELCOME_HREF } from '@/constants/navigation';
 import { Spacing } from '@/constants/theme';
-import { UserProfileResponse, api, getAuthToken, setAuthToken } from '@/services/api';
+import { FestiveEvent, UserProfileResponse, api, getAuthToken, setAuthToken } from '@/services/api';
 import { isSupabaseConfigured, supabase } from '@/services/supabase';
 import { avatarUriFromUser, displayNameFromUser } from '@/utils/display-name';
 import { resetQuizStore } from '@/services/quiz-store';
@@ -95,6 +95,16 @@ const ALLERGEN_LABELS: Record<string, string> = {
   tree_nuts: 'Tree Nuts',
 };
 
+const FESTIVE_EVENT_OPTIONS: { value: FestiveEvent; label: string }[] = [
+  { value: 'ramadan', label: 'Ramadan' },
+  { value: 'eid', label: 'Eid' },
+  { value: 'diwali', label: 'Diwali' },
+  { value: 'navratri', label: 'Navratri' },
+  { value: 'lunar_new_year', label: 'Lunar New Year' },
+  { value: 'passover', label: 'Passover' },
+  { value: 'christmas', label: 'Christmas' },
+];
+
 type Tab = 'cuisines' | 'restrictions' | 'conditions' | 'allergens';
 
 function Chip({ label }: { label: string }) {
@@ -130,6 +140,12 @@ export default function ProfileScreen() {
   const [nameModalOpen, setNameModalOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [nameSaving, setNameSaving] = useState(false);
+
+  const [festiveModalOpen, setFestiveModalOpen] = useState(false);
+  const [festiveDraft, setFestiveDraft] = useState<FestiveEvent | null>(null);
+  const [festiveStartDraft, setFestiveStartDraft] = useState('');
+  const [festiveEndDraft, setFestiveEndDraft] = useState('');
+  const [festiveSaving, setFestiveSaving] = useState(false);
 
   const applyUserToIdentity = useCallback((user: User | null) => {
     setDisplayName(displayNameFromUser(user));
@@ -168,6 +184,40 @@ export default function ProfileScreen() {
       setNameSaving(false);
     }
   }, [nameDraft]);
+
+  const openFestiveModal = useCallback(() => {
+    setFestiveDraft((profile?.active_festive_event as FestiveEvent | null) ?? null);
+    setFestiveStartDraft(profile?.festive_event_start ?? '');
+    setFestiveEndDraft(profile?.festive_event_end ?? '');
+    setFestiveModalOpen(true);
+  }, [profile]);
+
+  const saveFestiveEvent = useCallback(async () => {
+    if (!festiveDraft) return;
+    setFestiveSaving(true);
+    try {
+      const updated = await api.setFestiveEvent(festiveDraft, festiveStartDraft, festiveEndDraft);
+      setProfile(updated);
+      setFestiveModalOpen(false);
+    } catch {
+      // keep modal open
+    } finally {
+      setFestiveSaving(false);
+    }
+  }, [festiveDraft, festiveStartDraft, festiveEndDraft]);
+
+  const clearFestiveEvent = useCallback(async () => {
+    setFestiveSaving(true);
+    try {
+      const updated = await api.clearFestiveEvent();
+      setProfile(updated);
+      setFestiveModalOpen(false);
+    } catch {
+      // keep modal open
+    } finally {
+      setFestiveSaving(false);
+    }
+  }, []);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -331,6 +381,25 @@ export default function ProfileScreen() {
             </View>
           </View>
 
+          <TouchableOpacity
+            style={[styles.festiveCard, SHADOW]}
+            onPress={openFestiveModal}
+            activeOpacity={0.85}>
+            <ThemedText style={styles.festiveCardTitle}>Festive Mode</ThemedText>
+            <View style={styles.festiveCardPencil}>
+              <PencilIcon />
+            </View>
+            {profile.active_festive_event ? (
+              <View style={styles.chip}>
+                <ThemedText style={styles.chipLabel}>
+                  {FESTIVE_EVENT_OPTIONS.find(o => o.value === profile.active_festive_event)?.label ?? profile.active_festive_event}
+                </ThemedText>
+              </View>
+            ) : (
+              <ThemedText style={styles.festiveNone}>None active — tap to set</ThemedText>
+            )}
+          </TouchableOpacity>
+
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -374,6 +443,79 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
+
+      <Modal visible={festiveModalOpen} animationType="fade" transparent onRequestClose={() => setFestiveModalOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setFestiveModalOpen(false)} accessibilityLabel="Dismiss" />
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
+            <View style={styles.modalCard}>
+              <ThemedText style={styles.modalTitle}>Festive Mode</ThemedText>
+
+              <ScrollView style={styles.festiveOptionList} showsVerticalScrollIndicator={false}>
+                {FESTIVE_EVENT_OPTIONS.map(opt => {
+                  const selected = festiveDraft === opt.value;
+                  return (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.festiveOptionRow, selected && styles.festiveOptionRowSelected]}
+                      onPress={() => setFestiveDraft(opt.value)}
+                      activeOpacity={0.75}>
+                      <ThemedText style={[styles.festiveOptionLabel, selected && styles.festiveOptionLabelSelected]}>
+                        {opt.label}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {festiveDraft && (
+                <View style={styles.festiveDateGroup}>
+                  <ThemedText style={styles.festiveDateLabel}>Start date (YYYY-MM-DD)</ThemedText>
+                  <TextInput
+                    value={festiveStartDraft}
+                    onChangeText={setFestiveStartDraft}
+                    placeholder="e.g. 2025-03-01"
+                    placeholderTextColor={`${TAB_MUTED}99`}
+                    style={styles.modalInput}
+                    keyboardType="numbers-and-punctuation"
+                    editable={!festiveSaving}
+                  />
+                  <ThemedText style={styles.festiveDateLabel}>End date (YYYY-MM-DD)</ThemedText>
+                  <TextInput
+                    value={festiveEndDraft}
+                    onChangeText={setFestiveEndDraft}
+                    placeholder="e.g. 2025-03-30"
+                    placeholderTextColor={`${TAB_MUTED}99`}
+                    style={styles.modalInput}
+                    keyboardType="numbers-and-punctuation"
+                    editable={!festiveSaving}
+                  />
+                </View>
+              )}
+
+              <View style={styles.modalActions}>
+                {profile?.active_festive_event && (
+                  <TouchableOpacity
+                    style={[styles.modalBtnGhost, festiveSaving && styles.modalBtnDisabled]}
+                    onPress={() => void clearFestiveEvent()}
+                    disabled={festiveSaving}>
+                    <ThemedText style={styles.festiveClearLabel}>Turn Off</ThemedText>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.modalBtnGhost} onPress={() => setFestiveModalOpen(false)} disabled={festiveSaving}>
+                  <ThemedText style={styles.modalBtnGhostLabel}>Cancel</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalBtnPrimary, (!festiveDraft || festiveSaving) && styles.modalBtnDisabled]}
+                  onPress={() => void saveFestiveEvent()}
+                  disabled={!festiveDraft || festiveSaving}>
+                  <ThemedText style={styles.modalBtnPrimaryLabel}>{festiveSaving ? 'Saving…' : 'Save'}</ThemedText>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
 
       <Modal visible={nameModalOpen} animationType="fade" transparent onRequestClose={() => setNameModalOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -724,5 +866,72 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  festiveCard: {
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    borderWidth: 1,
+    borderColor: BLACK,
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.four,
+    paddingBottom: 18,
+    width: '100%',
+    marginBottom: Spacing.three,
+    position: 'relative',
+  },
+  festiveCardTitle: {
+    fontSize: 17,
+    fontWeight: '500',
+    color: ORANGE,
+    letterSpacing: -0.4,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  festiveCardPencil: {
+    position: 'absolute',
+    right: Spacing.three,
+    top: 14,
+  },
+  festiveNone: {
+    fontSize: 14,
+    color: TAB_MUTED,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  festiveOptionList: {
+    maxHeight: 220,
+    marginBottom: Spacing.two,
+  },
+  festiveOptionRow: {
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 4,
+    backgroundColor: '#f5f5f5',
+  },
+  festiveOptionRowSelected: {
+    backgroundColor: ORANGE,
+  },
+  festiveOptionLabel: {
+    fontSize: 15,
+    color: TAB_MUTED,
+    fontWeight: '500',
+  },
+  festiveOptionLabelSelected: {
+    color: '#fff',
+  },
+  festiveDateGroup: {
+    marginBottom: Spacing.two,
+  },
+  festiveDateLabel: {
+    fontSize: 13,
+    color: TAB_MUTED,
+    marginBottom: 4,
+    marginLeft: 2,
+  },
+  festiveClearLabel: {
+    color: ORANGE,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
