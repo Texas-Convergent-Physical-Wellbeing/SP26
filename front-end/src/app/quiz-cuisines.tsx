@@ -1,11 +1,11 @@
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Image, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { Cuisine } from '@/services/api';
-import { quizStore } from '@/services/quiz-store';
+import { Cuisine, api } from '@/services/api';
+import { buildProfileUpsertFromQuiz, hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -37,8 +37,33 @@ function ProgressBar({ step }: { step: number }) {
 
 export default function QuizCuisinesScreen() {
   const router = useRouter();
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const isEditMode = edit === '1';
   const [selected, setSelected] = useState<Cuisine[]>([]);
   const [otherText, setOtherText] = useState('');
+  const [hydrated, setHydrated] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      await hydrateQuizFromServer();
+      if (!alive) return;
+      const knownValues = CUISINES.map(c => c.value as string);
+      const normalized: Cuisine[] = [];
+      for (const v of quizStore.cuisines) {
+        if (knownValues.includes(v as string)) {
+          normalized.push(v as Cuisine);
+        } else {
+          normalized.push('other');
+          setOtherText(v as string);
+        }
+      }
+      setSelected(normalized);
+      setHydrated(true);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const toggle = (cuisine: Cuisine) => {
     setSelected(prev => {
@@ -51,10 +76,33 @@ export default function QuizCuisinesScreen() {
     });
   };
 
-  const onNext = () => {
-    quizStore.cuisines = selected;
-    router.push('/quiz-conditions');
+  const onNext = async () => {
+    const effectiveSelected = selected.map(v =>
+      v === 'other' && otherText.trim() ? (otherText.trim() as Cuisine) : v,
+    );
+    quizStore.cuisines = effectiveSelected;
+    if (isEditMode) {
+      setSaving(true);
+      try {
+        await api.upsertProfile(buildProfileUpsertFromQuiz(quizStore.diet_preferences, null));
+        router.replace('/profile');
+      } catch (err) {
+        Alert.alert('Could not save', err instanceof Error ? err.message : 'Failed to save profile');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    router.push('/quiz-allergens');
   };
+
+  if (!hydrated) {
+    return (
+      <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={ORANGE} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -109,12 +157,14 @@ export default function QuizCuisinesScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity style={styles.nextBtn} onPress={onNext} activeOpacity={0.85}>
-            <Image
+          <TouchableOpacity style={styles.nextBtn} onPress={() => void onNext()} activeOpacity={0.85} disabled={saving}>
+            {saving ? <ActivityIndicator color="#fff" /> : (
+              <Image
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
                 source={require('../../assets/images/right-arrow-circle.png')}
                 resizeMode="contain"
-            />
+              />
+            )}
           </TouchableOpacity>
         </View>
       </SafeAreaView>

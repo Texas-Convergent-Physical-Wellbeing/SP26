@@ -5,43 +5,45 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from app.constants.conditions import HealthCondition
 
 # ---------------------------------------------------------------------------
 # Condition-specific constraint descriptions injected into the prompt
 # ---------------------------------------------------------------------------
 
 _CONDITION_RULES: dict[str, str] = {
-    HealthCondition.Type2Diabetes.value: (
+    "diabetesI": (
+        "Type 1 Diabetes: keep carbohydrates ≤ 45 % of total calories; "
+        "prioritise low-GI foods; dietary fibre ≥ 30 g/day; "
+        "protein 25–30 % of calories. Include glycemic_notes for every meal."
+    ),
+    "diabetesII": (
         "Type 2 Diabetes: keep carbohydrates ≤ 40 % of total calories; "
         "prioritise low-GI foods; dietary fibre ≥ 30 g/day; "
         "protein 25–30 % of calories. Include glycemic_notes for every meal."
     ),
-    HealthCondition.Hypertension.value: (
+    "hypertension": (
         "Hypertension: sodium < 1500 mg/day total across all meals; "
         "potassium ≥ 3500 mg/day; avoid processed / heavily salted foods."
     ),
-    HealthCondition.PCOS.value: (
-        "PCOS: apply a 10–15 % caloric deficit from TDEE; "
-        "prioritise low-GI complex carbohydrates; fibre ≥ 30 g/day; "
-        "avoid refined sugar and high-glycaemic ingredients. "
-        "Include glycemic_notes for every meal."
-    ),
-    HealthCondition.HighCholesterol.value: (
-        "High Cholesterol: saturated fat < 7 % of total calories; "
+    "heart_disease": (
+        "Heart Disease: saturated fat < 7 % of total calories; "
         "total fat ≤ 25 % of calories; dietary fibre ≥ 25 g/day; "
         "avoid trans fats, coconut oil, palm oil, full-fat dairy."
     ),
-    HealthCondition.Celiac.value: (
+    "celiac_disease": (
         "Celiac Disease: ALL ingredients must be strictly gluten-free. "
         "No wheat, barley, rye, spelt, kamut, triticale, or cross-contaminated oats. "
         "Use certified gluten-free alternatives (e.g. rice flour, buckwheat, quinoa)."
     ),
-    HealthCondition.KidneyDisease.value: (
-        "Kidney Disease: total protein ≤ 0.8 g per kg of body weight per day; "
-        "potassium < 2000 mg/day; phosphorus < 800 mg/day; "
-        "avoid high-potassium foods (bananas, tomatoes, potatoes, oranges in large amounts); "
-        "avoid processed meats, cola, dairy in excess."
+    "obesity": (
+        "Obesity: apply a 10–15 % caloric deficit from TDEE; "
+        "prioritise high-volume, low-calorie foods; fibre ≥ 30 g/day; "
+        "avoid refined sugar and highly processed foods."
+    ),
+    "osteoporosis": (
+        "Osteoporosis: calcium ≥ 1200 mg/day; vitamin D ≥ 800 IU/day; "
+        "include dairy, leafy greens, fortified foods; "
+        "limit sodium and caffeine which leach calcium."
     ),
 }
 
@@ -143,10 +145,7 @@ def _build_header(profile: dict, plan_date: str) -> str:
 def _build_conditions_section(profile: dict) -> str:
     """List all active health conditions with their clinical constraints."""
     conditions: list[str] = profile.get("health_conditions", [])
-    active = [
-        c for c in conditions
-        if c and c != HealthCondition.NoneCondition.value
-    ]
+    active = [c for c in conditions if c and c != "other"]
     if not active:
         return "## Health Conditions\nNo active health conditions."
 

@@ -140,7 +140,7 @@ export function buildProfileUpsertFromQuiz(
   const cuisines = (quizStore.cuisines.length ? quizStore.cuisines : (ex?.cuisines ?? [])) as Cuisine[];
 
   const diet_preferences = (
-    dietSelected.length ? dietSelected : ((ex?.diet_preferences?.length ? ex.diet_preferences : ['none']) as DietPreference[])
+    dietSelected.length ? dietSelected : ((ex?.diet_preferences ?? []) as DietPreference[])
   );
 
   return {

@@ -50,24 +50,25 @@ const SHADOW_STRONG = {
 };
 
 const CUISINE_LABELS: Record<string, string> = {
-  south_asian: 'South Asian',
-  west_african: 'West African',
-  east_asian: 'East Asian',
-  latin_american: 'Latin American',
-  middle_eastern: 'Middle Eastern',
-  mediterranean: 'Mediterranean',
-  southeast_asian: 'Southeast Asian',
-  caribbean: 'Caribbean',
+  italian: 'Italian',
+  chinese: 'Chinese',
+  mexican: 'Mexican',
+  indian: 'Indian',
+  thai: 'Thai',
+  greek: 'Greek',
+  french: 'French',
+  other: 'Other',
 };
 
 const CONDITION_LABELS: Record<string, string> = {
-  type2_diabetes: 'Type 2 Diabetes',
+  diabetesI: 'Diabetes Type I',
+  diabetesII: 'Diabetes Type II',
+  heart_disease: 'Heart Disease',
+  celiac_disease: 'Celiac Disease',
   hypertension: 'Hypertension',
-  pcos: 'PCOS',
-  high_cholesterol: 'High Cholesterol',
-  celiac: 'Celiac',
-  kidney_disease: 'Kidney Disease',
-  none: 'None',
+  obesity: 'Obesity',
+  osteoporosis: 'Osteoporosis',
+  other: 'Other',
 };
 
 const DIET_LABELS: Record<string, string> = {
@@ -75,7 +76,10 @@ const DIET_LABELS: Record<string, string> = {
   kosher: 'Kosher',
   vegetarian: 'Vegetarian',
   vegan: 'Vegan',
-  none: 'No restrictions',
+  gluten_free: 'Gluten Free',
+  lactose_intolerant: 'Lactose Intolerant',
+  keto: 'Keto',
+  other: 'Other',
 };
 
 const ALLERGEN_LABELS: Record<string, string> = {
@@ -315,9 +319,9 @@ export default function ProfileScreen() {
 
   const tabDefs: { key: Tab; label: string }[] = [
     { key: 'cuisines', label: 'Cuisines' },
-    { key: 'restrictions', label: 'Restrictions' },
     { key: 'allergens', label: 'Allergens' },
     { key: 'conditions', label: 'Conditions' },
+    { key: 'restrictions', label: 'Restrictions' },
   ];
 
   return (
@@ -351,7 +355,7 @@ export default function ProfileScreen() {
 
           <TouchableOpacity
             style={[styles.goalsPill, SHADOW_STRONG]}
-            onPress={() => { resetQuizStore(); router.push('/quiz-goals'); }}
+            onPress={() => { router.push('/quiz-goals?edit=1'); }}
             activeOpacity={0.85}>
             <ThemedText style={styles.goalsPillLabel}>My Goals</ThemedText>
             <View style={styles.goalsPencil}>
@@ -375,7 +379,7 @@ export default function ProfileScreen() {
             <View style={styles.calorieDivider} />
             <View style={styles.calorieRight}>
               <ThemedText style={styles.calorieNumber}>{tdee ? Math.round(tdee) : '—'}</ThemedText>
-              <TouchableOpacity style={styles.caloriePencil} hitSlop={12} onPress={() => { resetQuizStore(); router.push('/quiz-calories'); }}>
+              <TouchableOpacity style={styles.caloriePencil} hitSlop={12} onPress={() => { router.push('/quiz-calories?edit=1'); }}>
                 <PencilIcon />
               </TouchableOpacity>
             </View>
@@ -433,7 +437,15 @@ export default function ProfileScreen() {
                 <ThemedText style={styles.emptyText}>None selected</ThemedText>
               )}
             </View>
-            <TouchableOpacity style={styles.chipPanelPencil} hitSlop={10} onPress={() => { resetQuizStore(); router.push('/quiz-cuisines'); }}>
+            <TouchableOpacity style={styles.chipPanelPencil} hitSlop={10} onPress={() => {
+              const tabRoutes: Record<Tab, string> = {
+                cuisines: '/quiz-cuisines?edit=1',
+                restrictions: '/quiz-diet?edit=1',
+                allergens: '/quiz-allergens?edit=1',
+                conditions: '/quiz-conditions?edit=1',
+              };
+              router.push(tabRoutes[activeTab]);
+            }}>
               <PencilIcon />
             </TouchableOpacity>
           </View>
@@ -646,8 +658,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   pencilImage: {
-    width: 22,
-    height: 22,
+    width: 32,
+    height: 32,
   },
   calorieCard: {
     flexDirection: 'row',
@@ -711,8 +723,9 @@ const styles = StyleSheet.create({
     minWidth: '100%',
   },
   tabCell: {
+    flex: 1,
     paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 6,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#fff',
@@ -721,7 +734,7 @@ const styles = StyleSheet.create({
     backgroundColor: ORANGE,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: TAB_MUTED,
     letterSpacing: -0.3,

@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  //Alert, //NOTE THIS
+  Alert,
   Image,
   Pressable,
   SafeAreaView,
@@ -16,7 +16,7 @@ import {
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { DietPreference, api } from '@/services/api';
-import { buildProfileUpsertFromQuiz, quizStore } from '@/services/quiz-store';
+import { buildProfileUpsertFromQuiz, hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -50,6 +50,26 @@ export default function QuizDietScreen() {
   const [loading, setLoading] = useState(false);
   const [otherText, setOtherText] = useState('');
 
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      await hydrateQuizFromServer();
+      if (!alive) return;
+      const knownValues = DIETS.map(d => d.value as string);
+      const normalized: DietPreference[] = [];
+      for (const v of quizStore.diet_preferences) {
+        if (knownValues.includes(v as string)) {
+          normalized.push(v as DietPreference);
+        } else {
+          normalized.push('other');
+          setOtherText(v as string);
+        }
+      }
+      setSelected(normalized);
+    })();
+    return () => { alive = false; };
+  }, []);
+
   const toggle = (diet: DietPreference) => {
     setSelected(prev =>
       prev.includes(diet) ? prev.filter(d => d !== diet) : [...prev, diet],
@@ -57,16 +77,20 @@ export default function QuizDietScreen() {
   };
 
   const onFinish = async () => {
-    quizStore.diet_preferences = selected;
+    const effectiveSelected = selected.map(v =>
+      v === 'other' && otherText.trim() ? (otherText.trim() as DietPreference) : v,
+    );
+    quizStore.diet_preferences = effectiveSelected;
     setLoading(true);
     try {
-      await api.upsertProfile(buildProfileUpsertFromQuiz(selected, null));
+      await api.upsertProfile(buildProfileUpsertFromQuiz(effectiveSelected, null));
+      router.replace('/profile');
     } catch (err: unknown) {
-      // Profile save failed (e.g. backend not reachable) — log and continue
       console.warn('upsertProfile failed:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to save profile';
+      Alert.alert('Could not save profile', msg + '\n\nPlease check your connection and try again.');
     } finally {
       setLoading(false);
-      router.replace('/profile');
     }
   };
 
@@ -80,7 +104,7 @@ export default function QuizDietScreen() {
           <ThemedText style={styles.headerTitle}>Diet Preferences</ThemedText>
         </View>
 
-        <ProgressBar step={5} />
+        <ProgressBar step={6} />
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <ThemedText style={styles.question}>What diet preferences{'\n'}do you have?</ThemedText>

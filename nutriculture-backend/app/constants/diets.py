@@ -10,4 +10,7 @@ class DietPreference(str, Enum):
     Kosher = "kosher"
     Vegetarian = "vegetarian"
     Vegan = "vegan"
-    NonePreference = "none"
+    GlutenFree = "gluten_free"
+    LactoseIntolerant = "lactose_intolerant"
+    Keto = "keto"
+    Other = "other"

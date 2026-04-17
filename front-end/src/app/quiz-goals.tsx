@@ -1,7 +1,8 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   SafeAreaView,
@@ -13,7 +14,8 @@ import {
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
+import { api } from '@/services/api';
+import { buildProfileUpsertFromQuiz, hydrateQuizFromServer, quizStore, resetQuizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -42,12 +44,16 @@ function ProgressBar({ step }: { step: number }) {
 
 export default function QuizGoalsScreen() {
   const router = useRouter();
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const isEditMode = edit === '1';
   const [selected, setSelected] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let alive = true;
     void (async () => {
+      if (!isEditMode) resetQuizStore();
       await hydrateQuizFromServer();
       if (!alive) return;
       setSelected([...quizStore.goals]);
@@ -64,8 +70,20 @@ export default function QuizGoalsScreen() {
     );
   };
 
-  const onNext = () => {
+  const onNext = async () => {
     quizStore.goals = selected;
+    if (isEditMode) {
+      setSaving(true);
+      try {
+        await api.upsertProfile(buildProfileUpsertFromQuiz(quizStore.diet_preferences, null));
+        router.replace('/profile');
+      } catch (err) {
+        Alert.alert('Could not save', err instanceof Error ? err.message : 'Failed to save profile');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     router.push('/quiz-calories');
   };
 
@@ -117,7 +135,7 @@ export default function QuizGoalsScreen() {
 
         {/* Next button */}
         <View style={styles.footer}>
-          <TouchableOpacity style={styles.nextBtn} onPress={onNext} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.nextBtn} onPress={() => void onNext()} activeOpacity={0.85} disabled={saving}>
             <Image
               // eslint-disable-next-line @typescript-eslint/no-require-imports
               source={require('../../assets/images/right-arrow-circle.png')}

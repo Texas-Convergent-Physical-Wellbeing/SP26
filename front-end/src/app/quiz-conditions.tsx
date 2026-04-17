@@ -1,11 +1,11 @@
-import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Pressable, SafeAreaView, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { HealthCondition } from '@/services/api';
-import { quizStore } from '@/services/quiz-store';
+import { HealthCondition, api } from '@/services/api';
+import { buildProfileUpsertFromQuiz, hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -35,8 +35,33 @@ function ProgressBar({ step }: { step: number }) {
 
 export default function QuizConditionsScreen() {
   const router = useRouter();
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const isEditMode = edit === '1';
   const [selected, setSelected] = useState<HealthCondition[]>([]);
   const [otherText, setOtherText] = useState('');
+  const [hydrated, setHydrated] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      await hydrateQuizFromServer();
+      if (!alive) return;
+      const knownValues = CONDITIONS.map(c => c.value as string);
+      const normalized: HealthCondition[] = [];
+      for (const v of quizStore.health_conditions) {
+        if (knownValues.includes(v as string)) {
+          normalized.push(v as HealthCondition);
+        } else {
+          normalized.push('other');
+          setOtherText(v as string);
+        }
+      }
+      setSelected(normalized);
+      setHydrated(true);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const toggle = (cond: HealthCondition) => {
     setSelected(prev =>
@@ -44,10 +69,33 @@ export default function QuizConditionsScreen() {
     );
   };
 
-  const onNext = () => {
-    quizStore.health_conditions = selected;
+  const onNext = async () => {
+    const effectiveSelected = selected.map(v =>
+      v === 'other' && otherText.trim() ? (otherText.trim() as HealthCondition) : v,
+    );
+    quizStore.health_conditions = effectiveSelected;
+    if (isEditMode) {
+      setSaving(true);
+      try {
+        await api.upsertProfile(buildProfileUpsertFromQuiz(quizStore.diet_preferences, null));
+        router.replace('/profile');
+      } catch (err) {
+        Alert.alert('Could not save', err instanceof Error ? err.message : 'Failed to save profile');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     router.push('/quiz-diet');
   };
+
+  if (!hydrated) {
+    return (
+      <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={ORANGE} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -59,7 +107,7 @@ export default function QuizConditionsScreen() {
           <ThemedText style={styles.headerTitle}>Health Conditions</ThemedText>
         </View>
 
-        <ProgressBar step={4} />
+        <ProgressBar step={5} />
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <ThemedText style={styles.question}>
@@ -101,12 +149,14 @@ export default function QuizConditionsScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity style={styles.nextBtn} onPress={onNext} activeOpacity={0.85}>
-            <Image
-              // eslint-disable-next-line @typescript-eslint/no-require-imports
-              source={require('../../assets/images/right-arrow-circle.png')}
-              resizeMode="contain"
+          <TouchableOpacity style={styles.nextBtn} onPress={() => void onNext()} activeOpacity={0.85} disabled={saving}>
+            {saving ? <ActivityIndicator color="#fff" /> : (
+              <Image
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                source={require('../../assets/images/right-arrow-circle.png')}
+                resizeMode="contain"
               />
+            )}
           </TouchableOpacity>
         </View>
       </SafeAreaView>

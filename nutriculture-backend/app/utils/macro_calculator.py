@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.constants.conditions import HealthCondition
 
 # ---------------------------------------------------------------------------
 # Activity level multipliers (Harris-Benedict / Mifflin-St Jeor standard)
@@ -79,7 +78,7 @@ def calculate_tdee(bmr: float, activity_level: str) -> float:
 
 def calculate_macro_targets(
     tdee: float,
-    conditions: list[HealthCondition],
+    conditions: list[str],
     weight_kg: float = 70.0,
 ) -> dict[str, float]:
     """Derive per-condition macro targets from TDEE.
@@ -130,7 +129,7 @@ def calculate_macro_targets(
 
 
 def _apply_condition(
-    condition: HealthCondition,
+    condition: str,
     calories: float,
     protein_pct: float,
     carbs_pct: float,
@@ -140,45 +139,33 @@ def _apply_condition(
     extras: dict[str, float],
 ) -> tuple[float, float, float, float, float, dict[str, float]]:
     """Return updated macro parameters after applying one condition's rules."""
-    if condition == HealthCondition.Type2Diabetes:
-        # Carbs ≤ 40 % → 35 %; protein 25–30 %; higher fiber
+    if condition in ("diabetesI", "diabetesII"):
         carbs_pct = min(carbs_pct, 0.35)
         protein_pct = max(protein_pct, 0.27)
         fat_pct = 1.0 - carbs_pct - protein_pct
         fiber_g = max(fiber_g, 30.0)
 
-    elif condition == HealthCondition.Hypertension:
+    elif condition == "hypertension":
         extras["sodium_mg_max"] = 1500.0
         extras["potassium_mg_min"] = 3500.0
 
-    elif condition == HealthCondition.PCOS:
-        # Slight caloric deficit (−12 %), low-GI carbs, higher fiber
-        calories = round(calories * 0.88, 2)
-        carbs_pct = min(carbs_pct, 0.35)
-        fiber_g = max(fiber_g, 30.0)
-        fat_pct = 1.0 - carbs_pct - protein_pct
-
-    elif condition == HealthCondition.HighCholesterol:
-        # Saturated fat < 7 % total cals; reflected as lower total fat
+    elif condition == "heart_disease":
         fat_pct = min(fat_pct, 0.25)
         fiber_g = max(fiber_g, 25.0)
         protein_pct = max(protein_pct, 0.28)
         carbs_pct = 1.0 - fat_pct - protein_pct
 
-    elif condition == HealthCondition.Celiac:
-        # No macro change; flag is carried through the profile
+    elif condition == "celiac_disease":
         extras["gluten_free"] = 1.0
 
-    elif condition == HealthCondition.KidneyDisease:
-        # Protein ≤ 0.8 g / kg body weight
-        protein_g_cap = 0.8 * weight_kg
-        protein_g_from_pct = (protein_pct * calories) / 4.0
-        if protein_g_from_pct > protein_g_cap:
-            protein_pct = (protein_g_cap * 4.0) / calories
-        fat_pct = min(fat_pct, 0.30)
-        carbs_pct = 1.0 - protein_pct - fat_pct
-        extras["potassium_mg_max"] = 2000.0
-        extras["phosphorus_mg_max"] = 800.0
+    elif condition == "obesity":
+        calories = round(calories * 0.88, 2)
+        carbs_pct = min(carbs_pct, 0.35)
+        fiber_g = max(fiber_g, 30.0)
+        fat_pct = 1.0 - carbs_pct - protein_pct
+
+    elif condition == "osteoporosis":
+        extras["calcium_mg_min"] = 1200.0
 
     return calories, protein_pct, carbs_pct, fat_pct, fiber_g, extras
 

@@ -1,7 +1,8 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   PanResponder,
   Pressable,
@@ -15,8 +16,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { ActivityLevel } from '@/services/api';
-import { hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
+import { ActivityLevel, api } from '@/services/api';
+import { buildProfileUpsertFromQuiz, hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -70,6 +71,8 @@ function ProgressBar({ step }: { step: number }) {
 
 export default function QuizCaloriesScreen() {
   const router = useRouter();
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const isEditMode = edit === '1';
   const insets = useSafeAreaInsets();
   const topPad = Math.max(insets.top, 12) + 8;
 
@@ -81,6 +84,7 @@ export default function QuizCaloriesScreen() {
   const [activity, setActivity] = useState<ActivityLevel>('moderately_active');
   const [manualCalories, setManualCalories] = useState<number | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -142,12 +146,24 @@ export default function QuizCaloriesScreen() {
     }),
   ).current;
 
-  const onNext = () => {
+  const onNext = async () => {
     quizStore.sex = sex as 'male' | 'female' | 'other';
     quizStore.age = Number(age) || 0;
     quizStore.weight_kg = Number(weight) || 0;
     quizStore.height_cm = Number(height) || 0;
     quizStore.activity_level = activity;
+    if (isEditMode) {
+      setSaving(true);
+      try {
+        await api.upsertProfile(buildProfileUpsertFromQuiz(quizStore.diet_preferences, null));
+        router.replace('/profile');
+      } catch (err) {
+        Alert.alert('Could not save', err instanceof Error ? err.message : 'Failed to save profile');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     router.push('/quiz-cuisines');
   };
 
@@ -301,7 +317,7 @@ export default function QuizCaloriesScreen() {
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.four) }]}>
-          <TouchableOpacity style={styles.nextBtn} onPress={onNext} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.nextBtn} onPress={() => void onNext()} activeOpacity={0.85} disabled={saving}>
             <Image
               // eslint-disable-next-line @typescript-eslint/no-require-imports
               source={require('../../assets/images/right-arrow-circle.png')}
