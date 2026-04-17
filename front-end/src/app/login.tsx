@@ -16,6 +16,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
+import { ONBOARDING_HREF } from '@/constants/navigation';
+import { setAuthToken } from '@/services/api';
 import { getPostAuthHref } from '@/services/post-auth-route';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
 
@@ -74,8 +76,8 @@ export default function LoginScreen() {
         return;
       }
       if (data.session?.access_token) {
-        const href = await getPostAuthHref(data.session.access_token);
-        router.replace(href);
+        setAuthToken(data.session.access_token);
+        router.replace(ONBOARDING_HREF);
         return;
       }
       Alert.alert(
@@ -203,7 +205,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: CREAM },
-  safe: { flex: 1 },
+  safe: { flex: 1, marginTop: 25, },
   flex: { flex: 1 },
   scroll: {
     flexGrow: 1,
@@ -268,6 +270,7 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     paddingVertical: 14,
     alignItems: 'center',
+    marginTop: 10,
   },
-  secondaryBtnText: { color: ORANGE, fontSize: 16, fontWeight: '700' },
+  secondaryBtnText: { color: ORANGE, fontSize: 16, fontWeight: '700', },
 });

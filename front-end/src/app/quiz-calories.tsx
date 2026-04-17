@@ -87,7 +87,9 @@ export default function QuizCaloriesScreen() {
     void (async () => {
       await hydrateQuizFromServer();
       if (!alive) return;
-      const idx = SEX_OPTIONS.findIndex(s => s.toLowerCase() === quizStore.sex);
+      const idx = quizStore.sexExplicitlySet
+        ? SEX_OPTIONS.findIndex(s => s.toLowerCase() === quizStore.sex)
+        : -1;
       setSexIdx(idx >= 0 ? idx : null);
       setAge(quizStore.age ? String(quizStore.age) : '');
       setWeight(quizStore.weight_kg ? String(quizStore.weight_kg) : '');
@@ -182,7 +184,7 @@ export default function QuizCaloriesScreen() {
             onPress={() => setShowSexOptions(v => !v)}
             activeOpacity={0.8}>
             <ThemedText style={[styles.dropdownText, sexIdx === null && styles.placeholder]}>
-              {sexIdx !== null ? SEX_OPTIONS[sexIdx] : 'Placeholder'}
+              {sexIdx !== null ? SEX_OPTIONS[sexIdx] : 'Select Sex'}
             </ThemedText>
             <ThemedText style={styles.chevron}>⌄</ThemedText>
           </TouchableOpacity>
@@ -192,7 +194,7 @@ export default function QuizCaloriesScreen() {
                 <TouchableOpacity
                   key={opt}
                   style={styles.dropdownOption}
-                  onPress={() => { setSexIdx(i); setShowSexOptions(false); }}>
+                  onPress={() => { setSexIdx(i); setShowSexOptions(false); quizStore.sexExplicitlySet = true; }}>
                   <ThemedText style={styles.dropdownOptionText}>{opt}</ThemedText>
                 </TouchableOpacity>
               ))}
@@ -486,18 +488,18 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'center',
     flexWrap: 'wrap',
-    marginTop: Spacing.three,
+    marginTop: -8,
     marginBottom: Spacing.five,
     minHeight: 44,
   },
   calorieValue: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: '#1e1e1e',
     lineHeight: 36,
   },
   calorieUnit: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '600',
     color: '#555',
     lineHeight: 36,
@@ -510,7 +512,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   /* Footer / next button */
-  footer: { paddingHorizontal: Spacing.four, marginTop: Spacing.two },
+  footer: { paddingHorizontal: Spacing.four, marginBottom: '6%' },
     nextBtn: {
       backgroundColor: ORANGE,
       borderRadius: 100,

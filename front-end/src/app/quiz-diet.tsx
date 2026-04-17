@@ -1,22 +1,22 @@
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  //Alert, //NOTE THIS
   Image,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import type { UserProfileResponse } from '@/services/api';
 import { DietPreference, api } from '@/services/api';
-import { buildProfileUpsertFromQuiz, hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
+import { buildProfileUpsertFromQuiz, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -24,11 +24,14 @@ const MUTED = '#ffb259';
 const SANDY = '#efd3a9';
 
 const DIETS: { label: string; value: DietPreference }[] = [
-  { label: 'Halal', value: 'halal' },
-  { label: 'Kosher', value: 'kosher' },
   { label: 'Vegetarian', value: 'vegetarian' },
   { label: 'Vegan', value: 'vegan' },
-  { label: 'No restrictions', value: 'none' },
+  { label: 'Halal', value: 'halal' },
+  { label: 'Kosher', value: 'kosher' },
+  { label: 'Gluten Free', value: 'gluten_free' },
+  { label: 'Lactose Intolerant', value: 'lactose_intolerant' },
+  { label: 'Keto', value: 'keto' },
+  { label: 'Other:____', value: 'other' },
 ];
 
 function ProgressBar({ step }: { step: number }) {
@@ -45,20 +48,7 @@ export default function QuizDietScreen() {
   const router = useRouter();
   const [selected, setSelected] = useState<DietPreference[]>([]);
   const [loading, setLoading] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      await hydrateQuizFromServer();
-      if (!alive) return;
-      setSelected([...quizStore.diet_preferences]);
-      setHydrated(true);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const [otherText, setOtherText] = useState('');
 
   const toggle = (diet: DietPreference) => {
     setSelected(prev =>
@@ -70,35 +60,15 @@ export default function QuizDietScreen() {
     quizStore.diet_preferences = selected;
     setLoading(true);
     try {
-      let existing: UserProfileResponse | null = null;
-      try {
-        existing = await api.getProfile();
-      } catch {
-        existing = null;
-      }
-      const payload = buildProfileUpsertFromQuiz(selected, existing);
-      await api.upsertProfile(payload);
+      await api.upsertProfile(buildProfileUpsertFromQuiz(selected, null));
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      console.warn('upsertProfile failed:', msg);
-      Alert.alert(
-        'Save failed',
-        `Could not save your profile: ${msg}.\n\nCheck that the API is running and try again.`,
-        [{ text: 'OK' }],
-      );
+      // Profile save failed (e.g. backend not reachable) — log and continue
+      console.warn('upsertProfile failed:', err);
     } finally {
       setLoading(false);
       router.replace('/profile');
     }
   };
-
-  if (!hydrated) {
-    return (
-      <View style={[styles.root, styles.hydrateCenter]}>
-        <ActivityIndicator size="large" color={ORANGE} />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.root}>
@@ -110,7 +80,7 @@ export default function QuizDietScreen() {
           <ThemedText style={styles.headerTitle}>Diet Preferences</ThemedText>
         </View>
 
-        <ProgressBar step={6} />
+        <ProgressBar step={5} />
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <ThemedText style={styles.question}>What diet preferences{'\n'}do you have?</ThemedText>
@@ -119,16 +89,29 @@ export default function QuizDietScreen() {
           <View style={styles.grid}>
             {DIETS.map(d => {
               const isSelected = selected.includes(d.value);
+              const isOther = d.value === 'other';
 
               return (
                 <TouchableOpacity
                   key={d.value}
                   style={[styles.tile, isSelected && styles.tileSelected]}
                   onPress={() => toggle(d.value)}
-                  activeOpacity={0.8}>
-                  <ThemedText style={[styles.tileLabel, isSelected && styles.tileLabelSelected]}>
-                    {d.label}
-                  </ThemedText>
+                  activeOpacity={isOther && isSelected ? 1 : 0.8}>
+                  {isOther && isSelected ? (
+                    <TextInput
+                      style={styles.otherInput}
+                      value={otherText}
+                      onChangeText={setOtherText}
+                      placeholder="Type preference..."
+                      placeholderTextColor="rgba(255,255,255,0.6)"
+                      autoFocus
+                      returnKeyType="done"
+                    />
+                  ) : (
+                    <ThemedText style={[styles.tileLabel, isSelected && styles.tileLabelSelected]}>
+                      {isOther && otherText ? `Other: ${otherText}` : d.label}
+                    </ThemedText>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -160,7 +143,6 @@ export default function QuizDietScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: CREAM, paddingTop: '15%', },
-  hydrateCenter: { justifyContent: 'center', alignItems: 'center' },
   safe: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -206,6 +188,14 @@ const styles = StyleSheet.create({
   tileSelected: { backgroundColor: ORANGE, borderColor: 'rgba(161,160,160,0.35)' },
   tileLabel: { fontSize: 20, fontWeight: '600', color: '#434343', textAlign: 'center' },
   tileLabelSelected: { color: '#fff' },
+  otherInput: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    textAlign: 'center',
+    width: '100%',
+    paddingHorizontal: Spacing.two,
+  },
   footer: { paddingHorizontal: Spacing.four, paddingBottom: Spacing.four, marginBottom: '13%', },
     nextBtn: {
       backgroundColor: ORANGE,
