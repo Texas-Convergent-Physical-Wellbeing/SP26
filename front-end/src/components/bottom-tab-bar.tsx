@@ -34,20 +34,20 @@ export function BottomTabBar({
 
   return (
     <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-      {/* Person icon → home/cooking page */}
-      <TouchableOpacity style={styles.tab} onPress={onHomePress} activeOpacity={0.75}>
-        <Ionicons
-          name="people"
-          size={28}
-          color={activeTab === 'home' ? ICON_ACTIVE : ICON_INACTIVE}
-        />
-      </TouchableOpacity>
       {/* Chat bubble icon → chat screen */}
       <TouchableOpacity style={styles.tab} onPress={onChatPress} activeOpacity={0.75}>
         <Ionicons
           name="chatbubble"
           size={28}
           color={activeTab === 'chat' ? ICON_ACTIVE : ICON_INACTIVE}
+        />
+      </TouchableOpacity>
+      {/* Person icon → home/cooking page */}
+      <TouchableOpacity style={styles.tab} onPress={onHomePress} activeOpacity={0.75}>
+        <Ionicons
+          name="people"
+          size={28}
+          color={activeTab === 'home' ? ICON_ACTIVE : ICON_INACTIVE}
         />
       </TouchableOpacity>
       {/* Bookmark icon → saved recipes */}

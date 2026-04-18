@@ -22,15 +22,15 @@ export default function AppTabs() {
         tabBarInactiveTintColor: INACTIVE,
         tabBarShowLabel: false,
       }}>
-      {/* Community/people icon (left) → Let's Get Cooking! home */}
-      <Tabs.Screen
-        name="index"
-        options={{ tabBarIcon: ({ color }) => <Ionicons name="people" size={28} color={color} /> }}
-      />
-      {/* Chat bubble (2nd) → Chat screen */}
+      {/* Chat bubble (1st) → Chat screen */}
       <Tabs.Screen
         name="chat"
         options={{ tabBarIcon: ({ color }) => <Ionicons name="chatbubble" size={28} color={color} /> }}
+      />
+      {/* Community/people icon (2nd) → Let's Get Cooking! home */}
+      <Tabs.Screen
+        name="index"
+        options={{ tabBarIcon: ({ color }) => <Ionicons name="people" size={28} color={color} /> }}
       />
       {/* Bookmark (3rd) → Saved recipes */}
       <Tabs.Screen

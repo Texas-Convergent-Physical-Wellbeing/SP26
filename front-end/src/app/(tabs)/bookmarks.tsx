@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: CREAM },
 
   header: { paddingHorizontal: 20, paddingBottom: 10 },
-  headerTitle: { fontSize: 28, fontWeight: '700', color: '#000' },
+  headerTitle: { fontSize: 28, fontWeight: '700', color: '#000', lineHeight: 36 },
 
   // Search + filter button row
   searchRow: {
