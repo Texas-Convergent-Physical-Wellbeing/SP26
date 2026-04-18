@@ -17,6 +17,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 
+import { BottomTabBar } from '@/components/bottom-tab-bar';
 import { ThemedText } from '@/components/themed-text';
 import { WELCOME_HREF } from '@/constants/navigation';
 import { Spacing } from '@/constants/theme';
@@ -332,7 +333,7 @@ export default function ProfileScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            { paddingTop: Math.max(insets.top, 8) + 48, paddingBottom: insets.bottom + Spacing.six },
+            { paddingTop: Math.max(insets.top, 8) + 48, paddingBottom: Spacing.six },
           ]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={ORANGE} />}
           showsVerticalScrollIndicator={false}>
@@ -444,7 +445,7 @@ export default function ProfileScreen() {
                 allergens: '/quiz-allergens?edit=1',
                 conditions: '/quiz-conditions?edit=1',
               };
-              router.push(tabRoutes[activeTab]);
+              router.push(tabRoutes[activeTab] as Parameters<typeof router.push>[0]);
             }}>
               <PencilIcon />
             </TouchableOpacity>
@@ -455,6 +456,14 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
+
+      <BottomTabBar
+        activeTab="profile"
+        onHomePress={() => router.replace('/(tabs)' as any)}
+        onChatPress={() => router.replace('/(tabs)/chat' as any)}
+        onBookmarksPress={() => router.replace('/(tabs)/bookmarks' as any)}
+        onProfilePress={() => {}}
+      />
 
       <Modal visible={festiveModalOpen} animationType="fade" transparent onRequestClose={() => setFestiveModalOpen(false)}>
         <View style={styles.modalBackdrop}>
