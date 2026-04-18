@@ -27,6 +27,7 @@ export interface QuizStore {
   goals: string[];
   /** Step 2 – biometrics */
   sex: 'male' | 'female' | 'other';
+  sexExplicitlySet: boolean;
   age: number;
   weight_kg: number;
   height_cm: number;
@@ -44,6 +45,7 @@ export interface QuizStore {
 export const quizStore: QuizStore = {
   goals: [],
   sex: 'male',
+  sexExplicitlySet: false,
   age: 0,
   weight_kg: 0,
   height_cm: 0,
@@ -62,6 +64,7 @@ let _sessionHydrated = false;
 export function resetQuizStore() {
   quizStore.goals = [];
   quizStore.sex = 'male';
+  quizStore.sexExplicitlySet = false;
   quizStore.age = 0;
   quizStore.weight_kg = 0;
   quizStore.height_cm = 0;
@@ -79,6 +82,7 @@ export function hydrateQuizStoreFromProfile(p: UserProfileResponse) {
   quizStore.goals = Array.isArray(goals) ? [...goals] : [];
   const sx = p.sex as string;
   quizStore.sex = sx === 'female' || sx === 'other' ? sx : 'male';
+  quizStore.sexExplicitlySet = sx === 'male' || sx === 'female' || sx === 'other';
   quizStore.age = Number(p.age) || 0;
   quizStore.weight_kg = Number(p.weight_kg) || 0;
   quizStore.height_cm = Number(p.height_cm) || 0;
@@ -136,7 +140,7 @@ export function buildProfileUpsertFromQuiz(
   const cuisines = (quizStore.cuisines.length ? quizStore.cuisines : (ex?.cuisines ?? [])) as Cuisine[];
 
   const diet_preferences = (
-    dietSelected.length ? dietSelected : ((ex?.diet_preferences?.length ? ex.diet_preferences : ['none']) as DietPreference[])
+    dietSelected.length ? dietSelected : ((ex?.diet_preferences ?? []) as DietPreference[])
   );
 
   return {

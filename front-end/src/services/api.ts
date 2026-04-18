@@ -102,25 +102,34 @@ export type ActivityLevel =
   | 'extra_active';
 
 export type HealthCondition =
-  | 'type2_diabetes'
+  | 'diabetesI'
+  | 'heart_disease'
+  | 'diabetesII'
+  | 'celiac_disease'
   | 'hypertension'
-  | 'pcos'
-  | 'high_cholesterol'
-  | 'celiac'
-  | 'kidney_disease'
-  | 'none';
+  | 'obesity'
+  | 'osteoporosis'
+  | 'other';
 
 export type Cuisine =
-  | 'south_asian'
-  | 'west_african'
-  | 'east_asian'
-  | 'latin_american'
-  | 'middle_eastern'
-  | 'mediterranean'
-  | 'southeast_asian'
-  | 'caribbean';
+  | 'italian'
+  | 'chinese'
+  | 'mexican'
+  | 'indian'
+  | 'thai'
+  | 'greek'
+  | 'french'
+  | 'other';
 
-export type DietPreference = 'halal' | 'kosher' | 'vegetarian' | 'vegan' | 'none';
+export type DietPreference = 
+  | 'halal' 
+  | 'kosher' 
+  | 'vegetarian' 
+  | 'vegan' 
+  | 'gluten_free'
+  | 'lactose_intolerant'
+  | 'keto'
+  | 'other';
 
 export type FestiveEvent =
   | 'ramadan'

@@ -1,7 +1,8 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   SafeAreaView,
@@ -13,8 +14,8 @@ import {
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { Allergen } from '@/services/api';
-import { hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
+import { Allergen, api } from '@/services/api';
+import { buildProfileUpsertFromQuiz, hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -48,8 +49,11 @@ function ProgressBar({ step }: { step: number }) {
 
 export default function QuizAllergensScreen() {
   const router = useRouter();
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const isEditMode = edit === '1';
   const [selected, setSelected] = useState<Allergen[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -70,9 +74,21 @@ export default function QuizAllergensScreen() {
     );
   };
 
-  const onNext = () => {
+  const onNext = async () => {
     quizStore.allergens = selected;
-    router.push('/quiz-diet');
+    if (isEditMode) {
+      setSaving(true);
+      try {
+        await api.upsertProfile(buildProfileUpsertFromQuiz(quizStore.diet_preferences, null));
+        router.replace('/profile');
+      } catch (err) {
+        Alert.alert('Could not save', err instanceof Error ? err.message : 'Failed to save profile');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    router.push('/quiz-conditions');
   };
 
   if (!hydrated) {
@@ -93,7 +109,7 @@ export default function QuizAllergensScreen() {
           <ThemedText style={styles.headerTitle}>Allergens</ThemedText>
         </View>
 
-        <ProgressBar step={5} />
+        <ProgressBar step={4} />
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <ThemedText style={styles.question}>
@@ -122,7 +138,7 @@ export default function QuizAllergensScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity style={styles.nextBtn} onPress={onNext} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.nextBtn} onPress={() => void onNext()} activeOpacity={0.85} disabled={saving}>
             <Image
               // eslint-disable-next-line @typescript-eslint/no-require-imports
               source={require('../../assets/images/right-arrow-circle.png')}

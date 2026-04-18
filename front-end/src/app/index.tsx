@@ -2,6 +2,7 @@ import type { Href } from 'expo-router';
 import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 
 import { WELCOME_HREF } from '@/constants/navigation';
 import { setAuthToken } from '@/services/api';
@@ -32,11 +33,11 @@ export default function Index() {
       if (!cancelled) setDest(href);
     }
 
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: { data: { session: Session | null } }) => {
       void applySession(data.session?.access_token);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
       if (cancelled) return;
       if (event === 'SIGNED_OUT') {
         setAuthToken('');

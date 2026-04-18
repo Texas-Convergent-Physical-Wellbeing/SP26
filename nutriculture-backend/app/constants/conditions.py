@@ -6,10 +6,11 @@ from enum import Enum
 class HealthCondition(str, Enum):
     """Enumeration of supported chronic health conditions for meal planning."""
 
-    Type2Diabetes = "type2_diabetes"
+    DiabetesI = "diabetesI"
+    HeartDisease = "heart_disease"
+    DiabetesII = "diabetesII"
+    CeliacDisease = "celiac_disease"
     Hypertension = "hypertension"
-    PCOS = "pcos"
-    HighCholesterol = "high_cholesterol"
-    Celiac = "celiac"
-    KidneyDisease = "kidney_disease"
-    NoneCondition = "none"
+    Obesity = "obesity"
+    Osteoporosis = "osteoporosis"
+    Other = "other"

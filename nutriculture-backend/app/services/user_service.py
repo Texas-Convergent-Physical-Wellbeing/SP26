@@ -46,7 +46,6 @@ async def create_or_update_profile(
 
     bmr = calculate_bmr(request.sex, request.age, request.weight_kg, request.height_cm)
     tdee = calculate_tdee(bmr, request.activity_level)
-    condition_values = [c.value for c in request.health_conditions]
     macro_dict = calculate_macro_targets(tdee, request.health_conditions, request.weight_kg)
 
     payload = {
@@ -55,10 +54,11 @@ async def create_or_update_profile(
         "age": request.age,
         "weight_kg": float(request.weight_kg),
         "height_cm": float(request.height_cm),
-        "health_conditions": condition_values,
+        "health_conditions": request.health_conditions,
         "allergens": [a.value for a in request.allergens],
-        "cuisines": [c.value for c in request.cuisines],
-        "diet_preferences": [d.value for d in request.diet_preferences],
+        "cuisines": request.cuisines,
+        "diet_preferences": request.diet_preferences,
+        "health_goals": request.health_goals,
         "skill_level": request.skill_level.value,
         "shortcut_mode": request.shortcut_mode,
         "tdee": tdee,
@@ -223,6 +223,7 @@ def _row_to_response(row: dict) -> UserProfileResponse:
         allergens=row.get("allergens") or [],
         cuisines=row.get("cuisines") or [],
         diet_preferences=row.get("diet_preferences") or [],
+        health_goals=row.get("health_goals") or [],
         skill_level=row.get("skill_level") or "intermediate",
         shortcut_mode=row.get("shortcut_mode") or False,
         active_festive_event=row.get("active_festive_event"),

@@ -8,9 +8,6 @@ from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 from app.constants.allergens import Allergen
-from app.constants.conditions import HealthCondition
-from app.constants.cuisines import Cuisine
-from app.constants.diets import DietPreference
 from app.constants.festive_events import FestiveEvent
 from app.constants.skill_levels import SkillLevel
 
@@ -51,16 +48,17 @@ class UserProfileUpsertRequest(BaseModel):
         "moderately_active",
         pattern="^(sedentary|lightly_active|moderately_active|very_active|extra_active)$",
     )
-    health_conditions: list[HealthCondition] = Field(default_factory=list)
+    health_conditions: list[str] = Field(default_factory=list)
     allergens: list[Allergen] = Field(default_factory=list)
-    cuisines: list[Cuisine] = Field(default_factory=list)
-    diet_preferences: list[DietPreference] = Field(default_factory=list)
+    cuisines: list[str] = Field(default_factory=list)
+    diet_preferences: list[str] = Field(default_factory=list)
+    health_goals: list[str] = Field(default_factory=list)
     skill_level: SkillLevel = SkillLevel.Intermediate
     shortcut_mode: bool = False
 
     @field_validator("cuisines")
     @classmethod
-    def validate_cuisine_limit(cls, v: list[Cuisine]) -> list[Cuisine]:
+    def validate_cuisine_limit(cls, v: list[str]) -> list[str]:
         """Enforce a maximum of 3 cuisine preferences."""
         if len(v) > 3:
             raise ValueError("A maximum of 3 cuisine preferences is allowed.")
@@ -93,6 +91,7 @@ class UserProfileResponse(BaseModel):
     allergens: list[str]
     cuisines: list[str]
     diet_preferences: list[str]
+    health_goals: list[str] = Field(default_factory=list)
     skill_level: str
     shortcut_mode: bool
     active_festive_event: Optional[str]

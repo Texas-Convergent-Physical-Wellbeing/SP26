@@ -1,7 +1,8 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   PanResponder,
   Pressable,
@@ -15,8 +16,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { ActivityLevel } from '@/services/api';
-import { hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
+import { ActivityLevel, api } from '@/services/api';
+import { buildProfileUpsertFromQuiz, hydrateQuizFromServer, quizStore } from '@/services/quiz-store';
 
 const CREAM = '#fff4db';
 const ORANGE = '#e2652f';
@@ -70,6 +71,8 @@ function ProgressBar({ step }: { step: number }) {
 
 export default function QuizCaloriesScreen() {
   const router = useRouter();
+  const { edit } = useLocalSearchParams<{ edit?: string }>();
+  const isEditMode = edit === '1';
   const insets = useSafeAreaInsets();
   const topPad = Math.max(insets.top, 12) + 8;
 
@@ -81,13 +84,16 @@ export default function QuizCaloriesScreen() {
   const [activity, setActivity] = useState<ActivityLevel>('moderately_active');
   const [manualCalories, setManualCalories] = useState<number | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let alive = true;
     void (async () => {
       await hydrateQuizFromServer();
       if (!alive) return;
-      const idx = SEX_OPTIONS.findIndex(s => s.toLowerCase() === quizStore.sex);
+      const idx = quizStore.sexExplicitlySet
+        ? SEX_OPTIONS.findIndex(s => s.toLowerCase() === quizStore.sex)
+        : -1;
       setSexIdx(idx >= 0 ? idx : null);
       setAge(quizStore.age ? String(quizStore.age) : '');
       setWeight(quizStore.weight_kg ? String(quizStore.weight_kg) : '');
@@ -140,12 +146,24 @@ export default function QuizCaloriesScreen() {
     }),
   ).current;
 
-  const onNext = () => {
+  const onNext = async () => {
     quizStore.sex = sex as 'male' | 'female' | 'other';
     quizStore.age = Number(age) || 0;
     quizStore.weight_kg = Number(weight) || 0;
     quizStore.height_cm = Number(height) || 0;
     quizStore.activity_level = activity;
+    if (isEditMode) {
+      setSaving(true);
+      try {
+        await api.upsertProfile(buildProfileUpsertFromQuiz(quizStore.diet_preferences, null));
+        router.replace('/profile');
+      } catch (err) {
+        Alert.alert('Could not save', err instanceof Error ? err.message : 'Failed to save profile');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     router.push('/quiz-cuisines');
   };
 
@@ -182,7 +200,7 @@ export default function QuizCaloriesScreen() {
             onPress={() => setShowSexOptions(v => !v)}
             activeOpacity={0.8}>
             <ThemedText style={[styles.dropdownText, sexIdx === null && styles.placeholder]}>
-              {sexIdx !== null ? SEX_OPTIONS[sexIdx] : 'Placeholder'}
+              {sexIdx !== null ? SEX_OPTIONS[sexIdx] : 'Select Sex'}
             </ThemedText>
             <ThemedText style={styles.chevron}>⌄</ThemedText>
           </TouchableOpacity>
@@ -192,7 +210,7 @@ export default function QuizCaloriesScreen() {
                 <TouchableOpacity
                   key={opt}
                   style={styles.dropdownOption}
-                  onPress={() => { setSexIdx(i); setShowSexOptions(false); }}>
+                  onPress={() => { setSexIdx(i); setShowSexOptions(false); quizStore.sexExplicitlySet = true; }}>
                   <ThemedText style={styles.dropdownOptionText}>{opt}</ThemedText>
                 </TouchableOpacity>
               ))}
@@ -299,7 +317,7 @@ export default function QuizCaloriesScreen() {
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.four) }]}>
-          <TouchableOpacity style={styles.nextBtn} onPress={onNext} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.nextBtn} onPress={() => void onNext()} activeOpacity={0.85} disabled={saving}>
             <Image
               // eslint-disable-next-line @typescript-eslint/no-require-imports
               source={require('../../assets/images/right-arrow-circle.png')}
@@ -486,18 +504,18 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'center',
     flexWrap: 'wrap',
-    marginTop: Spacing.three,
+    marginTop: -8,
     marginBottom: Spacing.five,
     minHeight: 44,
   },
   calorieValue: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: '#1e1e1e',
     lineHeight: 36,
   },
   calorieUnit: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '600',
     color: '#555',
     lineHeight: 36,
@@ -510,7 +528,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   /* Footer / next button */
-  footer: { paddingHorizontal: Spacing.four, marginTop: Spacing.two },
+  footer: { paddingHorizontal: Spacing.four, marginBottom: '6%' },
     nextBtn: {
       backgroundColor: ORANGE,
       borderRadius: 100,
