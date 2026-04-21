@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -24,14 +27,46 @@ const TAGS = ['Vegetarian', 'Vegan', 'Mexican', 'High-Protein', 'Gluten-Free', '
 export default function CreatePostScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    prefillTitle?: string;
+    prefillDescription?: string;
+    prefillIngredients?: string;
+    prefillSteps?: string;
+    prefillImage?: string;
+  }>();
 
-  const [recipeName, setRecipeName] = useState('');
+  const [recipeName, setRecipeName] = useState(() => String(params.prefillTitle ?? ''));
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [description, setDescription] = useState('');
-  const [ingredients, setIngredients] = useState('');
+  const [description, setDescription] = useState(() => {
+    const desc = String(params.prefillDescription ?? '');
+    const steps = String(params.prefillSteps ?? '');
+    return steps ? (desc ? `${desc}\n\n${steps}` : steps) : desc;
+  });
+  const [ingredients, setIngredients] = useState(() => String(params.prefillIngredients ?? ''));
+  const [imageUri, setImageUri] = useState<string | null>(() => {
+    const img = String(params.prefillImage ?? '');
+    return img ? img : null;
+  });
   const [submitted, setSubmitted] = useState(false);
 
   const canSubmit = recipeName.trim().length > 0;
+
+  const pickImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Please allow photo library access to upload an image.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]?.uri) {
+      setImageUri(result.assets[0].uri);
+    }
+  };
 
   const handleSubmit = () => {
     if (!canSubmit) return;
@@ -72,6 +107,37 @@ export default function CreatePostScreen() {
         contentContainerStyle={[styles.form, { paddingBottom: insets.bottom + 32 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
+
+        {/* Image */}
+        <ThemedText style={styles.label}>Photo</ThemedText>
+        {imageUri ? (
+          <View style={styles.imageWrap}>
+            <Image source={{ uri: imageUri }} style={styles.image} contentFit="cover" />
+            <View style={styles.imageActions}>
+              <TouchableOpacity style={styles.imageActionPill} onPress={pickImage} activeOpacity={0.85}>
+                <Ionicons name="image-outline" size={14} color="#111" />
+                <ThemedText style={styles.imageActionText}>Replace</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.imageActionPill}
+                onPress={() => setImageUri(null)}
+                activeOpacity={0.85}>
+                <Ionicons name="trash-outline" size={14} color="#111" />
+                <ThemedText style={styles.imageActionText}>Remove</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.uploadCard} onPress={pickImage} activeOpacity={0.85}>
+            <View style={styles.uploadIcon}>
+              <Ionicons name="cloud-upload-outline" size={22} color="#111" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <ThemedText style={styles.uploadTitle}>Add a photo</ThemedText>
+              <ThemedText style={styles.uploadSub}>Optional — upload an image of your dish</ThemedText>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* Recipe name */}
         <ThemedText style={styles.label}>Recipe Name *</ThemedText>
@@ -185,6 +251,53 @@ const styles = StyleSheet.create({
     minHeight: 100,
     paddingTop: 12,
   },
+  imageWrap: {
+    marginTop: 4,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  image: { width: '100%', height: 200, backgroundColor: '#fff' },
+  imageActions: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  imageActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  imageActionText: { fontSize: 12, fontWeight: '700', color: '#111' },
+  uploadCard: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(0,0,0,0.18)',
+  },
+  uploadIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff4db',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadTitle: { fontSize: 14, fontWeight: '800', color: '#111' },
+  uploadSub: { fontSize: 12, color: '#555', marginTop: 2 },
   tagRow: {
     gap: 8,
     paddingVertical: 4,

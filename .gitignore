@@ -39,3 +39,7 @@ htmlcov/
 # Node (for any frontend code in this repo)
 node_modules/
 .expo/
+
+
+.cursor/
+.claude/

@@ -19,6 +19,9 @@ class ChatRequest(BaseModel):
 
     message: str
     conversation_history: list[ChatMessage] = Field(default_factory=list)
+    # Titles of recipes already surfaced in this chat session. The backend injects
+    # these into the system prompt so the LLM never repeats the same dish.
+    excluded_titles: list[str] = Field(default_factory=list)
 
 
 class RecipeMacros(BaseModel):
@@ -37,6 +40,7 @@ class RecipePayload(BaseModel):
     ingredients: list[str]
     steps: list[str]
     macros: Optional[RecipeMacros] = None
+    health_tags: list[str] = Field(default_factory=list)
     why_this_works: Optional[str] = None
 
 
@@ -45,5 +49,6 @@ class ChatResponse(BaseModel):
 
     response: str
     conversation_history: list[ChatMessage]
-    kind: Literal["text", "recipe"] = "text"
+    kind: Literal["text", "recipe", "meal_plan"] = "text"
     recipe: Optional[RecipePayload] = None
+    recipes: Optional[list[RecipePayload]] = None

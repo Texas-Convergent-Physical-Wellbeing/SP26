@@ -10,8 +10,11 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "NuTradish talks to your NutriCulture API on the local network during development."
-      }
+        "NSLocalNetworkUsageDescription": "NuTradish talks to your NutriCulture API on the local network during development.",
+        "NSMicrophoneUsageDescription": "NuTradish uses your microphone so you can dictate recipe requests to Meal Mate.",
+        "NSSpeechRecognitionUsageDescription": "NuTradish transcribes your voice so you can ask Meal Mate for recipes hands-free."
+      },
+      "bundleIdentifier": "com.anonymous.NuTradish"
     },
     "android": {
       "usesCleartextTraffic": true,
@@ -21,7 +24,10 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -37,6 +43,16 @@
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
           }
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "NuTradish uses your microphone so you can dictate recipe requests to Meal Mate.",
+          "speechRecognitionPermission": "NuTradish transcribes your voice so you can ask Meal Mate for recipes hands-free.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
       ]
     ],

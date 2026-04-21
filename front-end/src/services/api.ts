@@ -222,14 +222,16 @@ export interface ChatRecipePayload {
   ingredients: string[];
   steps: string[];
   macros?: ChatRecipeMacros | null;
+  health_tags?: string[];
   why_this_works?: string | null;
 }
 
 export interface ChatResponse {
   response: string;
   conversation_history: ChatMessage[];
-  kind: 'text' | 'recipe';
+  kind: 'text' | 'recipe' | 'meal_plan';
   recipe?: ChatRecipePayload | null;
+  recipes?: ChatRecipePayload[] | null;
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
@@ -250,6 +252,14 @@ export const api = {
   clearFestiveEvent: () =>
     req<UserProfileResponse>('DELETE', '/api/v1/users/profile/festive'),
 
-  sendChatMessage: (message: string, conversation_history: ChatMessage[]) =>
-    req<ChatResponse>('POST', '/api/v1/chat/message', { message, conversation_history }),
+  sendChatMessage: (
+    message: string,
+    conversation_history: ChatMessage[],
+    excluded_titles: string[] = [],
+  ) =>
+    req<ChatResponse>('POST', '/api/v1/chat/message', {
+      message,
+      conversation_history,
+      excluded_titles,
+    }),
 };
