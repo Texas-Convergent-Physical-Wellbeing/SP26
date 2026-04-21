@@ -139,7 +139,7 @@ def _apply_condition(
     extras: dict[str, float],
 ) -> tuple[float, float, float, float, float, dict[str, float]]:
     """Return updated macro parameters after applying one condition's rules."""
-    if condition in ("diabetesI", "diabetesII"):
+    if condition in ("diabetesI", "diabetesII", "type2_diabetes", "type1_diabetes"):
         carbs_pct = min(carbs_pct, 0.35)
         protein_pct = max(protein_pct, 0.27)
         fat_pct = 1.0 - carbs_pct - protein_pct
@@ -166,6 +166,17 @@ def _apply_condition(
 
     elif condition == "osteoporosis":
         extras["calcium_mg_min"] = 1200.0
+
+    elif condition == "kidney_disease":
+        # Protein cap: 0.8 g/kg body weight (commonly used CKD guidance).
+        max_protein_g = 0.8 * weight_kg
+        max_protein_pct = (max_protein_g * 4.0) / max(calories, 1.0)
+        protein_pct = min(protein_pct, max_protein_pct)
+        # Rebalance remaining calories into carbs/fat, preserving current ratio.
+        remaining = max(0.0, 1.0 - protein_pct)
+        non_protein = max(1e-6, carbs_pct + fat_pct)
+        carbs_pct = remaining * (carbs_pct / non_protein)
+        fat_pct = remaining * (fat_pct / non_protein)
 
     return calories, protein_pct, carbs_pct, fat_pct, fiber_g, extras
 

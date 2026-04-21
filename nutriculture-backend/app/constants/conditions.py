@@ -9,8 +9,11 @@ class HealthCondition(str, Enum):
     DiabetesI = "diabetesI"
     HeartDisease = "heart_disease"
     DiabetesII = "diabetesII"
+    # Friendly aliases used in some parts of the app/tests
+    Type2Diabetes = "diabetesII"
     CeliacDisease = "celiac_disease"
     Hypertension = "hypertension"
     Obesity = "obesity"
     Osteoporosis = "osteoporosis"
+    KidneyDisease = "kidney_disease"
     Other = "other"

@@ -48,9 +48,11 @@ async def generate_meal_plan(prompt: str) -> dict:
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     try:
-        async with asyncio.timeout(settings.LLM_TIMEOUT_SECONDS):
-            return await _generate_with_retry(client, prompt)
-    except TimeoutError:
+        return await asyncio.wait_for(
+            _generate_with_retry(client, prompt),
+            timeout=settings.LLM_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
         logger.error(
             "Claude timed out after %s s during meal plan generation.",
             settings.LLM_TIMEOUT_SECONDS,

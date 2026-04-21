@@ -26,8 +26,13 @@ async def send_message(
     Accepts optional conversation history so the model has multi-turn context.
     Returns the reply and the full updated history for the client to persist.
     """
-    reply, updated_history = await chat_service.get_chat_response(
+    reply, updated_history, kind, recipe = await chat_service.get_chat_response(
         message=request.message,
         conversation_history=request.conversation_history,
     )
-    return ChatResponse(response=reply, conversation_history=updated_history)
+    return ChatResponse(
+        response=reply,
+        conversation_history=updated_history,
+        kind=kind,
+        recipe=recipe,
+    )

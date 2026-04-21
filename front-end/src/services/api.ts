@@ -199,6 +199,39 @@ export interface MacroTargetsResponse {
   tdee: number;
 }
 
+// ── Chat ─────────────────────────────────────────────────────────────────────
+
+export type ChatRole = 'user' | 'assistant';
+
+export interface ChatMessage {
+  role: ChatRole;
+  content: string;
+}
+
+export interface ChatRecipeMacros {
+  calories?: number | null;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  fat_g?: number | null;
+  fiber_g?: number | null;
+}
+
+export interface ChatRecipePayload {
+  title: string;
+  summary: string;
+  ingredients: string[];
+  steps: string[];
+  macros?: ChatRecipeMacros | null;
+  why_this_works?: string | null;
+}
+
+export interface ChatResponse {
+  response: string;
+  conversation_history: ChatMessage[];
+  kind: 'text' | 'recipe';
+  recipe?: ChatRecipePayload | null;
+}
+
 // ── Endpoints ────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -216,4 +249,7 @@ export const api = {
 
   clearFestiveEvent: () =>
     req<UserProfileResponse>('DELETE', '/api/v1/users/profile/festive'),
+
+  sendChatMessage: (message: string, conversation_history: ChatMessage[]) =>
+    req<ChatResponse>('POST', '/api/v1/chat/message', { message, conversation_history }),
 };
