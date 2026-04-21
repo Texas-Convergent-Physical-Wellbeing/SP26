@@ -66,15 +66,17 @@ async def test_chat_message_with_history(async_client):
 @pytest.mark.asyncio
 async def test_chat_history_trimmed_to_max(async_client):
     """History longer than MAX_HISTORY_MESSAGES should be trimmed before sending to Claude."""
-    # Build 30 turns (exceeds MAX_HISTORY_MESSAGES=20)
+    from app.services.chat_service import MAX_HISTORY_MESSAGES
+
+    # Build more turns than the cap so we can assert trimming behaviour.
     long_history = [
         {"role": "user" if i % 2 == 0 else "assistant", "content": f"msg {i}"}
-        for i in range(30)
+        for i in range(MAX_HISTORY_MESSAGES * 3)
     ]
 
     captured_messages: list = []
 
-    async def fake_call_claude(client, messages):
+    async def fake_call_claude(client, messages, *_args, **_kwargs):
         captured_messages.extend(messages)
         return "Great question!"
 
@@ -85,8 +87,8 @@ async def test_chat_history_trimmed_to_max(async_client):
         )
 
     assert response.status_code == 200
-    # trimmed to last 20 + the new user message = 21 messages sent to Claude
-    assert len(captured_messages) == 21
+    # Trimmed to last MAX_HISTORY_MESSAGES + the new user message.
+    assert len(captured_messages) == MAX_HISTORY_MESSAGES + 1
 
 
 @pytest.mark.asyncio

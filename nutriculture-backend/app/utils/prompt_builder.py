@@ -161,7 +161,9 @@ def _build_conditions_section(profile: dict) -> str:
 
 def _build_allergen_section(profile: dict) -> str:
     """Emit hard 'NEVER include' rules for every listed allergen."""
-    allergens: list[str] = profile.get("allergens", [])
+    # Drop the bare "other" sentinel — free-text allergens come through as
+    # their actual label (e.g. "Raisins").
+    allergens: list[str] = [a for a in profile.get("allergens", []) if a and a != "other"]
     if not allergens:
         return "## Allergens\nNo allergens declared."
 

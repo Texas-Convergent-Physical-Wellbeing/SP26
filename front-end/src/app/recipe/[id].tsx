@@ -2,13 +2,22 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
-import { RECIPES } from '@/data/recipes';
+import { RECIPES, type Recipe } from '@/data/recipes';
+import {
+  getUserPosts,
+  hydrateUserPosts,
+  removeUserPost,
+  subscribeUserPosts,
+} from '@/services/user-posts-store';
+import { seedFromId, stockFoodImage, userPostToRecipe } from '@/utils/synthesize-recipe-facts';
+import { CommentsSection } from '@/components/comments-section';
+import { Alert } from 'react-native';
 
 const BOOKMARKS_KEY = 'bookmarked_recipes';
 
@@ -141,7 +150,41 @@ export default function RecipeDetailScreen() {
     setBookmarked(!bookmarked);
   };
 
-  const recipe = RECIPES.find(r => r.id === id);
+  const [userPostsTick, setUserPostsTick] = useState(0);
+  useEffect(() => {
+    void hydrateUserPosts();
+    const unsub = subscribeUserPosts(() => setUserPostsTick((t) => t + 1));
+    return unsub;
+  }, []);
+
+  const { recipe, isUserPost } = useMemo<{ recipe: Recipe | null; isUserPost: boolean }>(() => {
+    const prebaked = RECIPES.find((r) => r.id === id);
+    if (prebaked) return { recipe: prebaked, isUserPost: false };
+    const userPost = getUserPosts().find((p) => p.id === id);
+    if (userPost) return { recipe: userPostToRecipe(userPost), isUserPost: true };
+    return { recipe: null, isUserPost: false };
+    // userPostsTick forces re-resolution after hydration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, userPostsTick]);
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete recipe?',
+      'This will remove your post from the community feed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (!id) return;
+            await removeUserPost(id);
+            router.back();
+          },
+        },
+      ],
+    );
+  };
 
   if (!recipe) {
     return (
@@ -182,12 +225,17 @@ export default function RecipeDetailScreen() {
             source={{ uri: recipe.imageUrl }}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
-            cachePolicy="disk"
+            cachePolicy="memory-disk"
+            transition={250}
+            placeholderContentFit="cover"
+            placeholder={{
+              uri: stockFoodImage(recipe.name || '', seedFromId(String(recipe.id))),
+            }}
           />
 
           {/* gradient overlay at top for legibility */}
           <View style={[styles.heroOverlay, { paddingTop: insets.top }]}>
-            {/* Back + Bookmark row */}
+            {/* Back + Delete (own post only) + Bookmark row */}
             <View style={styles.heroTopRow}>
               <TouchableOpacity
                 style={styles.circleBtn}
@@ -195,16 +243,27 @@ export default function RecipeDetailScreen() {
                 activeOpacity={0.8}>
                 <Ionicons name="chevron-back" size={22} color="#000" />
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.circleBtn, { backgroundColor: ORANGE }]}
-                onPress={toggleBookmark}
-                activeOpacity={0.8}>
-                <Ionicons
-                  name={bookmarked ? 'bookmark' : 'bookmark-outline'}
-                  size={20}
-                  color={bookmarked ? BROWN : '#333'}
-                />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {isUserPost && (
+                  <TouchableOpacity
+                    style={[styles.circleBtn, { backgroundColor: '#e44' }]}
+                    onPress={handleDelete}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Delete recipe">
+                    <Ionicons name="trash" size={18} color="#fff" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={[styles.circleBtn, { backgroundColor: ORANGE }]}
+                  onPress={toggleBookmark}
+                  activeOpacity={0.8}>
+                  <Ionicons
+                    name={bookmarked ? 'bookmark' : 'bookmark-outline'}
+                    size={20}
+                    color={bookmarked ? BROWN : '#333'}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Title at bottom of hero */}
@@ -375,6 +434,10 @@ export default function RecipeDetailScreen() {
             </View>
           </View>
         )}
+
+        <View style={styles.commentsWrap}>
+          <CommentsSection recipeId={id ?? ''} recipeName={recipe.name} />
+        </View>
 
         <View style={{ height: insets.bottom + 32 }} />
       </ScrollView>
@@ -689,5 +752,11 @@ const styles = StyleSheet.create({
   whyBold: {
     fontWeight: '700',
     color: BROWN,
+  },
+
+  /* Comments */
+  commentsWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
 });

@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -21,18 +23,26 @@ import { ThemedText } from '@/components/themed-text';
 import { ThinkingIndicator } from '@/components/thinking-indicator';
 import { RECIPES } from '@/data/recipes';
 import { useVoiceDictation } from '@/hooks/use-voice-dictation';
-import { api, getAuthToken, type ChatMessage as ApiChatMessage, type ChatResponse as ApiChatResponse } from '@/services/api';
-import { getChatRecipe, getChatRecipeImageUrl, putChatRecipe, subscribeChatRecipes } from '@/services/chat-recipe-store';
 import {
-  addSuggestedTitles,
-  clearChatConversation,
+  getChatRecipe,
+  getChatRecipeImageUrl,
+  hydrateChatRecipes,
+  subscribeChatRecipes,
+} from '@/services/chat-recipe-store';
+import {
+  deleteChatSession,
+  getActiveSessionId,
+  getAllSessions,
   getChatSession,
-  getSuggestedTitles,
   hydrateChatSession,
-  setChatHistory,
-  setChatMessages,
+  isSendingChat,
+  loadChatSession,
+  sendChatMessageFromStore,
+  startNewChatSession,
   subscribeChatSession,
+  type ChatSession,
 } from '@/services/chat-session-store';
+import { seedFromId, stockFoodImage } from '@/utils/synthesize-recipe-facts';
 
 const CREAM = '#fff4db';
 const TEXT_MUTED = '#434343';
@@ -48,10 +58,6 @@ type Message =
       text: string;
       recipe: { id: string; title: string; cta: string };
     };
-
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 function formatAssistantText(raw: string): string {
   // The backend may return Markdown (tables, headings, separators). Keep the UI readable.
@@ -98,7 +104,18 @@ function MessageBubble({ message, onRecipePress, onPostPress }: { message: Messa
       <View style={[styles.bubbleRow, styles.bubbleRowLeft]}>
         <View style={styles.recipeCard}>
           {imageUrl ? (
-            <Image source={{ uri: imageUrl }} style={styles.recipeImage} contentFit="cover" />
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.recipeImage}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={250}
+              recyclingKey={imageUrl}
+              placeholderContentFit="cover"
+              placeholder={{
+                uri: stockFoodImage(message.recipe.title || '', seedFromId(message.recipe.id)),
+              }}
+            />
           ) : (
             <View style={styles.recipeImagePlaceholder}>
               <Ionicons name="restaurant-outline" size={28} color="#9a8a6a" />
@@ -275,36 +292,25 @@ export default function MealMateConversationScreen() {
     toggleVoice();
   };
 
-  // Restore from the module-level session store so state survives navigation.
+  // Subscribe to the module-level session store so state survives navigation
+  // AND in-flight requests keep running when the user leaves the page.
   const [messages, setMessagesState] = useState<Message[]>(() => getChatSession().messages as Message[]);
-  const [history, setHistoryState] = useState<ApiChatMessage[]>(() => getChatSession().history);
-  const [sending, setSending] = useState(false);
+  const [sending, setSending] = useState<boolean>(() => isSendingChat());
   const initialSentRef = useRef(false);
-  // Bump on each store update so recipe cards re-render when an image is added later.
-  const [, setStoreTick] = useState(0);
-
-  // Mirrors setMessages/setHistory into the persistent session store.
-  const setMessages = (updater: Message[] | ((prev: Message[]) => Message[])) => {
-    setMessagesState((prev) => {
-      const next = typeof updater === 'function' ? (updater as (p: Message[]) => Message[])(prev) : updater;
-      setChatMessages(next);
-      return next;
-    });
-  };
-  const setHistory = (updater: ApiChatMessage[] | ((prev: ApiChatMessage[]) => ApiChatMessage[])) => {
-    setHistoryState((prev) => {
-      const next = typeof updater === 'function' ? (updater as (p: ApiChatMessage[]) => ApiChatMessage[])(prev) : updater;
-      setChatHistory(next);
-      return next;
-    });
-  };
 
   useEffect(() => {
-    const unsubscribeRecipes = subscribeChatRecipes(() => setStoreTick((t) => t + 1));
-    const unsubscribeSession = subscribeChatSession(() => setStoreTick((t) => t + 1));
+    const syncFromStore = () => {
+      setMessagesState([...(getChatSession().messages as Message[])]);
+      setSending(isSendingChat());
+    };
+    const unsubscribeRecipes = subscribeChatRecipes(syncFromStore);
+    const unsubscribeSession = subscribeChatSession(syncFromStore);
     // Load persisted exclusion titles so the very first request already knows
     // what the user has seen before (fixes "always the same three meals" issue).
     void hydrateChatSession();
+    // Also hydrate recipe payloads so old recipe cards in resumed messages
+    // can still open their detail screen (rather than showing "not found").
+    void hydrateChatRecipes();
     return () => {
       unsubscribeRecipes();
       unsubscribeSession();
@@ -315,107 +321,7 @@ export default function MealMateConversationScreen() {
     const trimmed = text.trim();
     if (!trimmed) return;
     setDraft('');
-    if (sending) return;
-
-    // optimistic user message
-    setMessages((prev) => [...prev, { id: makeId(), role: 'user', kind: 'text', text: trimmed }]);
-
-    setSending(true);
-    // Capture history snapshot BEFORE this message so the backend doesn't see
-    // the new user turn duplicated (server appends the new message itself).
-    const historySnapshot = history;
-    try {
-      const token = getAuthToken();
-
-      // If not authenticated yet, show a local demo response so the UI is usable.
-      if (!token) {
-        const recipeId = makeId();
-        putChatRecipe(recipeId, {
-          title: 'Super Cool Personalized Recipe Here',
-          summary: 'Sign in to enable live AI generation. This is a local demo card.',
-          ingredients: ['Example ingredient 1', 'Example ingredient 2'],
-          steps: ['Example step 1', 'Example step 2'],
-          macros: { calories: 480, protein_g: 30, carbs_g: 50, fat_g: 18, fiber_g: 8 },
-          why_this_works: 'Once authenticated, Meal Mate will tailor this to your profile.',
-        });
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: makeId(),
-            role: 'assistant',
-            kind: 'recipe',
-            text: 'Sign in to enable live Meal Mate responses.',
-            recipe: { id: recipeId, title: 'Super Cool Personalized Recipe Here', cta: 'Click to learn more' },
-          },
-        ]);
-        return;
-      }
-
-      const res: ApiChatResponse = await api.sendChatMessage(
-        trimmed,
-        historySnapshot,
-        getSuggestedTitles(),
-      );
-      setHistory(res.conversation_history);
-
-      const recipePayload = res.recipe ?? null;
-      const recipesPayload = res.recipes ?? null;
-
-      // Remember titles so subsequent requests can tell the LLM not to repeat
-      // them. Persisted to AsyncStorage by the session store.
-      const newTitles: string[] = [];
-      if (recipePayload?.title) newTitles.push(recipePayload.title);
-      if (recipesPayload) {
-        for (const r of recipesPayload) {
-          if (r?.title) newTitles.push(r.title);
-        }
-      }
-      addSuggestedTitles(newTitles);
-
-      if (res.kind === 'meal_plan' && recipesPayload && recipesPayload.length > 0) {
-        const introMessage: Message = {
-          id: makeId(),
-          role: 'assistant',
-          kind: 'text',
-          text: formatAssistantText(res.response),
-        };
-        const cardMessages: Message[] = recipesPayload.map((r) => {
-          const rid = makeId();
-          putChatRecipe(rid, r);
-          return {
-            id: makeId(),
-            role: 'assistant',
-            kind: 'recipe',
-            text: '',
-            recipe: { id: rid, title: r.title, cta: 'Click to learn more' },
-          };
-        });
-        setMessages((prev) => [...prev, introMessage, ...cardMessages]);
-      } else if (res.kind === 'recipe' && recipePayload) {
-        const recipeId = makeId();
-        putChatRecipe(recipeId, recipePayload);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: makeId(),
-            role: 'assistant',
-            kind: 'recipe',
-            text: formatAssistantText(res.response),
-            recipe: { id: recipeId, title: recipePayload.title, cta: 'Click to learn more' },
-          },
-        ]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { id: makeId(), role: 'assistant', kind: 'text', text: formatAssistantText(res.response) },
-        ]);
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to send message';
-      setMessages((prev) => [...prev, { id: makeId(), role: 'assistant', kind: 'text', text: msg }]);
-    } finally {
-      setSending(false);
-    }
+    await sendChatMessageFromStore(trimmed);
   };
 
   const onRecipePress = (id: string) => {
@@ -433,6 +339,10 @@ export default function MealMateConversationScreen() {
         prefillIngredients: (stored?.ingredients ?? []).join('\n'),
         prefillSteps: (stored?.steps ?? []).map((s, i) => `${i + 1}. ${s}`).join('\n'),
         prefillImage: imageUri ?? '',
+        // Flag that this community post was generated by Meal Mate so bookmarking
+        // the resulting community card keeps it in the "Saved AI Recipes" section.
+        aiOrigin: '1',
+        aiRecipeJson: stored ? JSON.stringify(stored) : '',
       },
     } as any);
   };
@@ -450,15 +360,61 @@ export default function MealMateConversationScreen() {
   }, [params.initialMessage]);
 
   const startNewChat = () => {
-    clearChatConversation();
+    // Archive the current conversation into the last-5 history (if it has
+    // any messages) and open a fresh one.
+    startNewChatSession();
     setMessagesState([]);
-    setHistoryState([]);
     initialSentRef.current = false;
     const start = (params.initialMessage ?? '').trim();
     if (start) {
       initialSentRef.current = true;
       void send(start);
     }
+  };
+
+  // ── Past chats panel ───────────────────────────────────────────────────────
+  const [historyOpen, setHistoryOpen] = useState(false);
+  // `sessions` and `activeId` are derived via cacheVersion so the modal
+  // re-renders whenever a session is added / removed / switched.
+  const [sessionCacheVersion, setSessionCacheVersion] = useState(0);
+  useEffect(() => {
+    const unsub = subscribeChatSession(() =>
+      setSessionCacheVersion((v) => v + 1),
+    );
+    return unsub;
+  }, []);
+  const allSessions = useMemo<ChatSession[]>(
+    () => getAllSessions(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessionCacheVersion, historyOpen],
+  );
+  const activeSessionId = getActiveSessionId();
+
+  const pickSession = (sessionId: string) => {
+    loadChatSession(sessionId);
+    setMessagesState([...(getChatSession().messages as Message[])]);
+    initialSentRef.current = true;
+    setHistoryOpen(false);
+  };
+
+  const confirmDeleteSession = (session: ChatSession) => {
+    Alert.alert(
+      'Delete this chat?',
+      session.label === 'New chat'
+        ? 'This will remove an empty chat.'
+        : `"${session.label}" will be permanently deleted.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteChatSession(session.id);
+            setMessagesState([...(getChatSession().messages as Message[])]);
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -478,8 +434,104 @@ export default function MealMateConversationScreen() {
           <View style={styles.backBtn} />
         )}
         <ThemedText style={styles.title}>Meal Mate</ThemedText>
-        <View style={styles.backBtn} />
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => setHistoryOpen(true)}
+          activeOpacity={0.8}
+          accessibilityLabel="Show past chats">
+          <Ionicons name="time-outline" size={24} color="#000" />
+        </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={historyOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setHistoryOpen(false)}>
+        <Pressable
+          style={styles.historyBackdrop}
+          onPress={() => setHistoryOpen(false)}>
+          <Pressable
+            style={[styles.historySheet, { paddingTop: insets.top + 16 }]}
+            onPress={() => {
+              // Intentional no-op — the nested Pressable claims the touch
+              // so taps inside the sheet don't bubble to the backdrop.
+            }}>
+            <View style={styles.historyHeader}>
+              <ThemedText style={styles.historyTitle}>Past chats</ThemedText>
+              <TouchableOpacity
+                onPress={() => setHistoryOpen(false)}
+                hitSlop={10}
+                activeOpacity={0.7}>
+                <Ionicons name="close" size={22} color="#000" />
+              </TouchableOpacity>
+            </View>
+            <ThemedText style={styles.historySubtitle}>
+              Your last {allSessions.length} conversation{allSessions.length === 1 ? '' : 's'}
+            </ThemedText>
+            {allSessions.length === 0 ? (
+              <ThemedText style={styles.historyEmpty}>
+                No chats yet — send Meal Mate a message to get started.
+              </ThemedText>
+            ) : (
+              <ScrollView style={{ marginTop: 12 }} contentContainerStyle={{ paddingBottom: 24 }}>
+                {allSessions.map((s) => {
+                  const isActive = s.id === activeSessionId;
+                  const msgCount = s.messages.length;
+                  const when = new Date(s.updated_at);
+                  const whenLabel = isNaN(when.getTime())
+                    ? ''
+                    : when.toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                      }) +
+                      ' · ' +
+                      when.toLocaleTimeString(undefined, {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      });
+                  return (
+                    <View
+                      key={s.id}
+                      style={[
+                        styles.historyRow,
+                        isActive && styles.historyRowActive,
+                      ]}>
+                      <TouchableOpacity
+                        style={{ flex: 1 }}
+                        onPress={() => pickSession(s.id)}
+                        activeOpacity={0.85}>
+                        <ThemedText
+                          style={[
+                            styles.historyRowLabel,
+                            isActive && styles.historyRowLabelActive,
+                          ]}
+                          numberOfLines={2}>
+                          {s.label}
+                        </ThemedText>
+                        <ThemedText style={styles.historyRowMeta}>
+                          {msgCount === 0
+                            ? 'Empty'
+                            : `${msgCount} message${msgCount === 1 ? '' : 's'}`}
+                          {whenLabel ? `  ·  ${whenLabel}` : ''}
+                          {isActive ? '  ·  Active' : ''}
+                        </ThemedText>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => confirmDeleteSession(s)}
+                        hitSlop={8}
+                        activeOpacity={0.7}
+                        style={styles.historyRowDelete}>
+                        <Ionicons name="trash-outline" size={18} color="#a23a2f" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {messages.length === 0 ? (
         <WelcomeState onPickSuggestion={(msg) => void send(msg)} />
@@ -560,6 +612,73 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
+  },
+
+  historyBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-start',
+  },
+  historySheet: {
+    backgroundColor: CREAM,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    maxHeight: '80%',
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  historyTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    letterSpacing: -0.3,
+  },
+  historySubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    color: TEXT_MUTED,
+  },
+  historyEmpty: {
+    marginTop: 18,
+    fontSize: 14,
+    color: TEXT_MUTED,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  historyRowActive: {
+    borderColor: '#ffb259',
+    backgroundColor: '#fff7e8',
+  },
+  historyRowLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  historyRowLabelActive: {
+    color: '#b55a0f',
+  },
+  historyRowMeta: {
+    marginTop: 3,
+    fontSize: 12,
+    color: TEXT_MUTED,
+  },
+  historyRowDelete: {
+    marginLeft: 10,
+    padding: 6,
   },
 
   listContent: {

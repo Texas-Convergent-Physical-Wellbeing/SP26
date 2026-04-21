@@ -16,6 +16,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ShimmerPlaceholder } from '@/components/shimmer-placeholder';
 import { ThemedText } from '@/components/themed-text';
 import { Recipe, RECIPES } from '@/data/recipes';
+import {
+  ChatBookmark,
+  getChatBookmarks,
+  hydrateChatBookmarks,
+  removeChatBookmark,
+  subscribeChatBookmarks,
+} from '@/services/chat-bookmark-store';
+import {
+  getUserPosts,
+  hydrateUserPosts,
+  subscribeUserPosts,
+  UserPost,
+} from '@/services/user-posts-store';
+import { resolveDisplayImage, seedFromId, stockFoodImage, userPostToRecipe } from '@/utils/synthesize-recipe-facts';
 
 const CREAM = '#fff4db';
 const ORANGE = '#ffb259';
@@ -253,6 +267,51 @@ function RecipeCard({
   );
 }
 
+// ─── AI Bookmark Card ─────────────────────────────────────────────────────────
+
+function AiBookmarkCard({
+  entry,
+  onPress,
+  onRemove,
+}: {
+  entry: ChatBookmark;
+  onPress: (entry: ChatBookmark) => void;
+  onRemove: (id: string) => void;
+}) {
+  const displayImage = resolveDisplayImage(entry.imageUri, entry.recipe.title, entry.id);
+  // Show an instant stock food photo as the placeholder — it appears in ~300ms
+  // from Unsplash's CDN while the accurate AI-generated image keeps loading.
+  const placeholderUri = stockFoodImage(entry.recipe.title || '', seedFromId(entry.id));
+  return (
+    <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={() => onPress(entry)}>
+      <Image
+        source={{ uri: displayImage }}
+        style={StyleSheet.absoluteFill}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        transition={250}
+        recyclingKey={displayImage}
+        placeholderContentFit="cover"
+        placeholder={{ uri: placeholderUri }}
+      />
+      <View style={styles.cardOverlay} />
+      <View style={[styles.tag, styles.aiTag]}>
+        <ThemedText style={[styles.tagText, styles.aiTagText]}>AI Recipe</ThemedText>
+      </View>
+      <TouchableOpacity
+        style={styles.removeBtn}
+        onPress={e => { e.stopPropagation?.(); onRemove(entry.id); }}
+        hitSlop={8}
+        activeOpacity={0.75}>
+        <Ionicons name="bookmark" size={16} color={ORANGE_ACCENT} />
+      </TouchableOpacity>
+      <ThemedText style={styles.cardName} numberOfLines={2}>
+        {entry.recipe.title}
+      </ThemedText>
+    </TouchableOpacity>
+  );
+}
+
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function BookmarksScreen() {
@@ -262,9 +321,26 @@ export default function BookmarksScreen() {
   const [section, setSection] = useState<Section>('liked');
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [likedIds, setLikedIds] = useState<string[]>([]);
+  const [chatBookmarks, setChatBookmarks] = useState<ChatBookmark[]>(() => getChatBookmarks());
+  const [userPosts, setUserPosts] = useState<UserPost[]>(() => getUserPosts());
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
   const [showFilterSheet, setShowFilterSheet] = useState(false);
+
+  useEffect(() => {
+    void hydrateChatBookmarks();
+    void hydrateUserPosts();
+    const unsubscribeChat = subscribeChatBookmarks(() => {
+      setChatBookmarks([...getChatBookmarks()]);
+    });
+    const unsubscribeUser = subscribeUserPosts(() => {
+      setUserPosts([...getUserPosts()]);
+    });
+    return () => {
+      unsubscribeChat();
+      unsubscribeUser();
+    };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -295,9 +371,48 @@ export default function BookmarksScreen() {
     setActiveFilters(prev => { const n = new Set(prev); n.delete(f); return n; });
   };
 
+  // AI-origin user posts (posted to community from Meal Mate chat) that are
+  // currently saved. We promote these into the "Saved AI Recipes" strip so
+  // they keep their AI identity even after being posted to the community.
+  const aiOriginSavedUserPosts = useMemo(() => {
+    if (section !== 'saved') return [] as UserPost[];
+    const idSet = new Set(savedIds);
+    return userPosts.filter((p) => p.ai_origin && idSet.has(p.id));
+  }, [section, savedIds, userPosts]);
+
+  // Unified list of AI recipe entries to show in the AI strip: real chat
+  // bookmarks + AI-origin user posts (both shaped as ChatBookmark-like items).
+  const aiStripEntries: ChatBookmark[] = useMemo(() => {
+    const fromUserPosts: ChatBookmark[] = aiOriginSavedUserPosts.map((p) => ({
+      id: p.id,
+      imageUri: p.imageUri,
+      created_at: p.created_at,
+      recipe: p.ai_recipe ?? {
+        title: p.title,
+        summary: p.description ?? '',
+        ingredients: [],
+        steps: [],
+        macros: null,
+        why_this_works: null,
+      },
+    }));
+    return [...fromUserPosts, ...chatBookmarks];
+  }, [aiOriginSavedUserPosts, chatBookmarks]);
+
   const displayedRecipes = useMemo(() => {
     const ids = section === 'saved' ? savedIds : likedIds;
-    let list = RECIPES.filter(r => ids.includes(r.id));
+    const idSet = new Set(ids);
+    // AI-origin posts are already surfaced in the top strip — don't duplicate
+    // them in the main grid for the Saved tab.
+    const hideAiOriginPostIds =
+      section === 'saved' ? new Set(aiOriginSavedUserPosts.map((p) => p.id)) : new Set<string>();
+    const userRecipes = userPosts
+      .filter(p => idSet.has(p.id) && !hideAiOriginPostIds.has(p.id))
+      .map(userPostToRecipe);
+    let list: Recipe[] = [
+      ...userRecipes,
+      ...RECIPES.filter(r => idSet.has(r.id)),
+    ];
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -307,7 +422,7 @@ export default function BookmarksScreen() {
       list = list.filter(r => [...activeFilters].some(f => recipeMatchesFilter(r, f)));
     }
     return list;
-  }, [section, savedIds, likedIds, searchQuery, activeFilters]);
+  }, [section, savedIds, likedIds, searchQuery, activeFilters, userPosts, aiOriginSavedUserPosts]);
 
   const leftCol = displayedRecipes.filter((_, i) => i % 2 === 0);
   const rightCol = displayedRecipes.filter((_, i) => i % 2 !== 0);
@@ -409,8 +524,52 @@ export default function BookmarksScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* ── AI recipe section (Saved tab only) ── */}
+      {section === 'saved' && aiStripEntries.length > 0 && (
+        <View style={styles.aiSection}>
+          <View style={styles.aiSectionHeader}>
+            <Ionicons name="sparkles" size={14} color={BROWN} />
+            <ThemedText style={styles.aiSectionTitle}>Saved AI Recipes</ThemedText>
+            <ThemedText style={styles.aiSectionCount}>{aiStripEntries.length}</ThemedText>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.aiRow}>
+            {aiStripEntries.map((entry) => {
+              const isUserPost = entry.id.startsWith('user-');
+              return (
+                <View key={entry.id} style={styles.aiCardWrap}>
+                  <AiBookmarkCard
+                    entry={entry}
+                    onPress={(e) => {
+                      if (isUserPost) {
+                        // User-post detail route lives outside the chat tab
+                        // and reads from user-posts-store / userPostToRecipe.
+                        router.push(`/recipe/${e.id}` as any);
+                      } else {
+                        router.push({ pathname: '/(tabs)/chat/recipe/[id]', params: { id: e.id, from: 'bookmarks' } } as any);
+                      }
+                    }}
+                    onRemove={(id) => {
+                      if (isUserPost) {
+                        // Un-saving an AI-origin user post just removes it from
+                        // the bookmark list (the community post itself stays).
+                        void handleRemoveSaved(id);
+                      } else {
+                        void removeChatBookmark(id);
+                      }
+                    }}
+                  />
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
       {/* ── Content ── */}
-      {displayedRecipes.length === 0 ? (
+      {displayedRecipes.length === 0 && !(section === 'saved' && aiStripEntries.length > 0) ? (
         <View style={styles.emptyState}>
           <Ionicons
             name={section === 'liked' ? 'heart-outline' : 'bookmark-outline'}
@@ -596,6 +755,54 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   column: { flex: 1, gap: 10 },
+
+  // AI Recipes strip
+  aiSection: {
+    marginBottom: 12,
+  },
+  aiSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    marginBottom: 6,
+  },
+  aiSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: BROWN,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  aiSectionCount: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+    backgroundColor: BROWN,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  aiRow: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  aiCardWrap: {
+    width: 160,
+  },
+  aiPlaceholder: {
+    backgroundColor: '#d28a4a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiTag: {
+    backgroundColor: ORANGE,
+  },
+  aiTagText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
 
   // Card
   card: {

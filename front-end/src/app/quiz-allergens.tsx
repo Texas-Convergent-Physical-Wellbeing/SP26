@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -35,6 +36,7 @@ const ALLERGENS: { label: string; value: Allergen }[] = [
   { label: 'Mustard', value: 'mustard' },
   { label: 'Celery', value: 'celery' },
   { label: 'Molluscs', value: 'molluscs' },
+  { label: 'Other:____', value: 'other' },
 ];
 
 function ProgressBar({ step }: { step: number }) {
@@ -52,6 +54,7 @@ export default function QuizAllergensScreen() {
   const { edit } = useLocalSearchParams<{ edit?: string }>();
   const isEditMode = edit === '1';
   const [selected, setSelected] = useState<Allergen[]>([]);
+  const [otherText, setOtherText] = useState('');
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -60,7 +63,17 @@ export default function QuizAllergensScreen() {
     void (async () => {
       await hydrateQuizFromServer();
       if (!alive) return;
-      setSelected([...quizStore.allergens]);
+      const knownValues = ALLERGENS.map(a => a.value as string);
+      const normalized: Allergen[] = [];
+      for (const v of quizStore.allergens) {
+        if (knownValues.includes(v as string)) {
+          normalized.push(v as Allergen);
+        } else {
+          normalized.push('other');
+          setOtherText(v as string);
+        }
+      }
+      setSelected(normalized);
       setHydrated(true);
     })();
     return () => {
@@ -75,7 +88,12 @@ export default function QuizAllergensScreen() {
   };
 
   const onNext = async () => {
-    quizStore.allergens = selected;
+    // Replace the "other" sentinel with the typed text so it flows through to
+    // the backend (stored as free text) and the LLM prompt.
+    const effectiveSelected = selected.map(v =>
+      v === 'other' && otherText.trim() ? (otherText.trim() as Allergen) : v,
+    );
+    quizStore.allergens = effectiveSelected;
     if (isEditMode) {
       setSaving(true);
       try {
@@ -122,15 +140,28 @@ export default function QuizAllergensScreen() {
           <View style={styles.grid}>
             {ALLERGENS.map(a => {
               const isSelected = selected.includes(a.value);
+              const isOther = a.value === 'other';
               return (
                 <TouchableOpacity
                   key={a.value}
                   style={[styles.tile, isSelected && styles.tileSelected]}
                   onPress={() => toggle(a.value)}
-                  activeOpacity={0.8}>
-                  <ThemedText style={[styles.tileLabel, isSelected && styles.tileLabelSelected]}>
-                    {a.label}
-                  </ThemedText>
+                  activeOpacity={isOther && isSelected ? 1 : 0.8}>
+                  {isOther && isSelected ? (
+                    <TextInput
+                      style={styles.otherInput}
+                      value={otherText}
+                      onChangeText={setOtherText}
+                      placeholder="Type allergen..."
+                      placeholderTextColor="rgba(255,255,255,0.6)"
+                      autoFocus
+                      returnKeyType="done"
+                    />
+                  ) : (
+                    <ThemedText style={[styles.tileLabel, isSelected && styles.tileLabelSelected]}>
+                      {isOther && otherText ? `Other: ${otherText}` : a.label}
+                    </ThemedText>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -205,6 +236,14 @@ const styles = StyleSheet.create({
   tileSelected: { backgroundColor: ORANGE, borderColor: 'rgba(161,160,160,0.35)' },
   tileLabel: { fontSize: 20, fontWeight: '600', color: '#434343', textAlign: 'center' },
   tileLabelSelected: { color: '#fff' },
+  otherInput: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+    textAlign: 'center',
+    width: '100%',
+    paddingHorizontal: Spacing.two,
+  },
   footer: { paddingHorizontal: Spacing.four, paddingBottom: Spacing.four, marginBottom: '13%' },
   nextBtn: {
     backgroundColor: ORANGE,

@@ -20,3 +20,4 @@ class Allergen(str, Enum):
     Soybeans = "soybeans"
     SulphurDioxide = "sulphur_dioxide"
     TreeNuts = "tree_nuts"
+    Other = "other"

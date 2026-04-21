@@ -143,7 +143,7 @@ export type FestiveEvent =
 export type Allergen =
   | 'celery' | 'gluten' | 'crustaceans' | 'eggs' | 'fish' | 'lupin'
   | 'milk' | 'molluscs' | 'mustard' | 'peanuts' | 'sesame'
-  | 'soybeans' | 'sulphur_dioxide' | 'tree_nuts';
+  | 'soybeans' | 'sulphur_dioxide' | 'tree_nuts' | 'other';
 
 export interface UserProfileRequest {
   sex: string;

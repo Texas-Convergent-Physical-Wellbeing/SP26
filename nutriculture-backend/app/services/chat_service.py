@@ -74,6 +74,40 @@ _DIET_RULES: dict[str, str] = {
     "vegetarian": "Vegetarian — no meat, poultry, or fish. Dairy and eggs are permitted.",
 }
 
+# Festive-mode guidance — injected whenever the user has an active festive event.
+_FESTIVE_RULES: dict[str, str] = {
+    "ramadan": (
+        "Ramadan — the user is fasting sunrise-to-sunset. Frame single meals as suhoor "
+        "(pre-dawn, slow-release carbs + protein, avoid high-sodium) or iftar "
+        "(breaks fast with dates + water, then a balanced meal, avoid deep-fried). "
+        "If the user asks for a full day, use suhoor / iftar / light evening snack instead of breakfast/lunch/dinner."
+    ),
+    "diwali": (
+        "Diwali — include condition-adapted takes on traditional Diwali dishes "
+        "(lighter kheer, baked mathri, roasted chivda, less-ghee halwa). Name dishes authentically."
+    ),
+    "eid": (
+        "Eid — lean, condition-adapted Eid dishes (e.g. lighter sheer khurma, baked seviyan, "
+        "low-sodium biryani). Halal rules apply by default."
+    ),
+    "lunar_new_year": (
+        "Lunar New Year — reduced-sodium dumplings, brown-rice noodle soup, steamed fish with "
+        "low-sodium sauce, or other condition-adapted traditional dishes."
+    ),
+    "passover": (
+        "Passover — every recipe must be chametz-free (no leavened wheat/barley/rye/oat/spelt). "
+        "Use matzo, quinoa, or potato-based alternatives."
+    ),
+    "navratri": (
+        "Navratri — sattvic/vrat-only ingredients: no onion, no garlic, no regular grains. "
+        "Use kuttu/buckwheat, singhara/water-chestnut flour, sama rice, sabudana/tapioca. Dairy is OK."
+    ),
+    "christmas": (
+        "Christmas — include condition-adapted takes on festive dishes "
+        "(lighter sorrel, reduced-sodium jerk chicken, lower-sugar black cake, portion-controlled plantain)."
+    ),
+}
+
 
 def _build_personalized_system_prompt(profile: dict) -> str:
     """Build a system prompt that includes the user's onboarding profile context.
@@ -94,8 +128,8 @@ def _build_personalized_system_prompt(profile: dict) -> str:
             label = cond.replace("_", " ").title()
             profile_lines.append(f"  - {label}: {rule}" if rule else f"  - {label}: apply general clinical guidelines.")
 
-    # Allergens
-    allergens: list[str] = profile.get("allergens") or []
+    # Allergens — drop the bare "other" marker (typed text is stored separately).
+    allergens: list[str] = [a for a in (profile.get("allergens") or []) if a and a != "other"]
     if allergens:
         allergen_str = ", ".join(a.replace("_", " ").title() for a in allergens)
         profile_lines.append(
@@ -139,6 +173,28 @@ def _build_personalized_system_prompt(profile: dict) -> str:
             + "\n\nAlways ensure every meal suggestion and recipe respects all of the above constraints."
         )
         sections.append(context_block)
+
+    # Festive mode — overrides / augments the default meal framing.
+    festive_event: Optional[str] = profile.get("active_festive_event")
+    if festive_event:
+        festive_rule = _FESTIVE_RULES.get(festive_event)
+        festive_label = festive_event.replace("_", " ").title()
+        date_window_parts: list[str] = []
+        start = profile.get("festive_event_start")
+        end = profile.get("festive_event_end")
+        if start:
+            date_window_parts.append(f"from {start}")
+        if end:
+            date_window_parts.append(f"through {end}")
+        date_window = " ".join(date_window_parts)
+        festive_block = (
+            f"\n\n## Festive Mode — {festive_label}"
+            + (f" ({date_window})" if date_window else "")
+            + "\nThe user has Festive Mode ON. Every recipe you suggest should reflect this:\n"
+            + (f"- {festive_rule}" if festive_rule else f"- Honour {festive_label} traditions in dish selection.")
+            + "\n- Mention the festive connection briefly in `summary` or `why_this_works`."
+        )
+        sections.append(festive_block)
 
     return "".join(sections)
 

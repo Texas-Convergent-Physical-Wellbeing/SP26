@@ -18,6 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Image } from 'expo-image';
 
 import { BottomTabBar } from '@/components/bottom-tab-bar';
+import { DateRangeCalendar } from '@/components/date-range-calendar';
 import { ThemedText } from '@/components/themed-text';
 import { WELCOME_HREF } from '@/constants/navigation';
 import { Spacing } from '@/constants/theme';
@@ -491,25 +492,15 @@ export default function ProfileScreen() {
 
               {festiveDraft && (
                 <View style={styles.festiveDateGroup}>
-                  <ThemedText style={styles.festiveDateLabel}>Start date (YYYY-MM-DD)</ThemedText>
-                  <TextInput
-                    value={festiveStartDraft}
-                    onChangeText={setFestiveStartDraft}
-                    placeholder="e.g. 2025-03-01"
-                    placeholderTextColor={`${TAB_MUTED}99`}
-                    style={styles.modalInput}
-                    keyboardType="numbers-and-punctuation"
-                    editable={!festiveSaving}
-                  />
-                  <ThemedText style={styles.festiveDateLabel}>End date (YYYY-MM-DD)</ThemedText>
-                  <TextInput
-                    value={festiveEndDraft}
-                    onChangeText={setFestiveEndDraft}
-                    placeholder="e.g. 2025-03-30"
-                    placeholderTextColor={`${TAB_MUTED}99`}
-                    style={styles.modalInput}
-                    keyboardType="numbers-and-punctuation"
-                    editable={!festiveSaving}
+                  <ThemedText style={styles.festiveDateLabel}>Pick start & end dates</ThemedText>
+                  <DateRangeCalendar
+                    startDate={festiveStartDraft}
+                    endDate={festiveEndDraft}
+                    onChange={(start, end) => {
+                      setFestiveStartDraft(start);
+                      setFestiveEndDraft(end);
+                    }}
+                    accentColor={ORANGE}
                   />
                 </View>
               )}

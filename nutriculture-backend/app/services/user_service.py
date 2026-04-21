@@ -55,7 +55,7 @@ async def create_or_update_profile(
         "weight_kg": float(request.weight_kg),
         "height_cm": float(request.height_cm),
         "health_conditions": request.health_conditions,
-        "allergens": [a.value for a in request.allergens],
+        "allergens": list(request.allergens),
         "cuisines": request.cuisines,
         "diet_preferences": request.diet_preferences,
         "health_goals": request.health_goals,

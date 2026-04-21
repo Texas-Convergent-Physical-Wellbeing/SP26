@@ -7,7 +7,6 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.constants.allergens import Allergen
 from app.constants.festive_events import FestiveEvent
 from app.constants.skill_levels import SkillLevel
 
@@ -49,7 +48,9 @@ class UserProfileUpsertRequest(BaseModel):
         pattern="^(sedentary|lightly_active|moderately_active|very_active|extra_active)$",
     )
     health_conditions: list[str] = Field(default_factory=list)
-    allergens: list[Allergen] = Field(default_factory=list)
+    # Accept free-text allergens (e.g. "raisins") so users can specify ones
+    # outside the EU top-14 enum via the "Other" option in the quiz.
+    allergens: list[str] = Field(default_factory=list)
     cuisines: list[str] = Field(default_factory=list)
     diet_preferences: list[str] = Field(default_factory=list)
     health_goals: list[str] = Field(default_factory=list)

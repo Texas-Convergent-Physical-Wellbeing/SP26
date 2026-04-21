@@ -27,6 +27,11 @@ export interface Recipe {
 }
 
 function aiFood(prompt: string, seed: number, height = 500): string {
+  // Intentionally pinned to `flux` — every curated recipe's URL is already
+  // warm in Pollinations' server-side cache under these exact params, so the
+  // images load near-instantly on any device that has hit the CDN before.
+  // Changing the model or prompt text invalidates that cache and forces
+  // every recipe to regenerate (10–15s each), which breaks the community tab.
   const encoded = encodeURIComponent(
     `${prompt}, professional food photography, soft natural lighting, shallow depth of field, appetizing, high quality`,
   );

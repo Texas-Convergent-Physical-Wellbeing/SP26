@@ -10,7 +10,23 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { DonutChart } from '@/components/donut-chart';
 import { api } from '@/services/api';
-import { getChatRecipe, getChatRecipeImageUrl, setChatRecipeImage } from '@/services/chat-recipe-store';
+import {
+  addChatBookmark,
+  getChatBookmarks,
+  hydrateChatBookmarks,
+  isChatRecipeBookmarked,
+  removeChatBookmark,
+  subscribeChatBookmarks,
+} from '@/services/chat-bookmark-store';
+import {
+  ensureChatRecipe,
+  getChatRecipe,
+  getChatRecipeImageUrl,
+  hydrateChatRecipes,
+  setChatRecipeImage,
+  subscribeChatRecipes,
+} from '@/services/chat-recipe-store';
+import { seedFromId, stockFoodImage } from '@/utils/synthesize-recipe-facts';
 
 const CREAM = '#fff4db';
 const ORANGE = '#ffb259';
@@ -22,36 +38,106 @@ const FAT_COLOR = '#f08a50';
 type Tab = 'recipe' | 'facts';
 type MacroKey = 'protein' | 'carbs' | 'fat';
 
+const RECIPE_NOT_FOUND = {
+  title: 'Recipe not found',
+  summary: 'Return to chat and generate a recipe card.',
+  ingredients: [] as string[],
+  steps: [] as string[],
+  macros: null,
+  why_this_works: null,
+} as const;
+
 export default function ChatRecipeDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const [tab, setTab] = useState<Tab>('recipe');
-  const [bookmarked, setBookmarked] = useState(false);
-
   const recipeId = id ? String(id) : '';
 
-  const recipe = useMemo(() => {
-    const stored = recipeId ? getChatRecipe(recipeId) : undefined;
-    return (
-      stored ?? {
-        title: 'Recipe not found',
-        summary: 'Return to chat and generate a recipe card.',
-        ingredients: [],
-        steps: [],
-        macros: null,
-        why_this_works: null,
-      }
-    );
+  // When opened from the Bookmarks tab, `router.back()` resolves to the chat
+  // conversation route (since this screen lives under `(tabs)/chat/...`).
+  // Route back to bookmarks explicitly in that case so the user isn't yanked
+  // into the LLM conversation.
+  const goBack = () => {
+    if (from === 'bookmarks') {
+      router.replace('/(tabs)/bookmarks' as any);
+      return;
+    }
+    router.back();
+  };
+  const [bookmarked, setBookmarked] = useState(() => isChatRecipeBookmarked(recipeId));
+  const [bookmarkBusy, setBookmarkBusy] = useState(false);
+
+  // Re-render trigger for the in-memory chat-recipe store (it's populated
+  // asynchronously on hydrate, so we need to refresh when it lands).
+  const [cacheVersion, setCacheVersion] = useState(0);
+
+  useEffect(() => {
+    void hydrateChatRecipes();
+    const unsub = subscribeChatRecipes(() => setCacheVersion((v) => v + 1));
+    return unsub;
+  }, []);
+
+  // Hydrate bookmarks so we can fall back to the bookmark's snapshot payload
+  // if the recipe has dropped out of the live chat cache (e.g. user started
+  // a new chat, which clears messages — the bookmark still has the payload).
+  useEffect(() => {
+    void hydrateChatBookmarks().then(() => {
+      if (recipeId) setBookmarked(isChatRecipeBookmarked(recipeId));
+      setCacheVersion((v) => v + 1);
+    });
+    const unsubscribe = subscribeChatBookmarks(() => {
+      if (recipeId) setBookmarked(isChatRecipeBookmarked(recipeId));
+      setCacheVersion((v) => v + 1);
+    });
+    return unsubscribe;
   }, [recipeId]);
+
+  const recipe = useMemo(() => {
+    if (!recipeId) return RECIPE_NOT_FOUND;
+    const stored = getChatRecipe(recipeId);
+    if (stored) return stored;
+    // Fallback: look in persisted bookmarks (the user saved it there, so the
+    // full payload survives even if the original chat session is long gone).
+    const fromBookmark = getChatBookmarks().find((b) => b.id === recipeId);
+    if (fromBookmark?.recipe) {
+      // Seed the chat-recipe store so images/tabs behave normally.
+      ensureChatRecipe(recipeId, fromBookmark.recipe, fromBookmark.imageUri);
+      return fromBookmark.recipe;
+    }
+    return RECIPE_NOT_FOUND;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipeId, cacheVersion]);
 
   const [imageUri, setImageUri] = useState<string | null>(() =>
     recipeId ? getChatRecipeImageUrl(recipeId) ?? null : null,
   );
 
   useEffect(() => {
-    if (recipeId) setImageUri(getChatRecipeImageUrl(recipeId) ?? null);
-  }, [recipeId]);
+    if (!recipeId) return;
+    const url = getChatRecipeImageUrl(recipeId);
+    if (url) {
+      setImageUri(url);
+      return;
+    }
+    // If we didn't find it in the live store, check the saved bookmark.
+    const bm = getChatBookmarks().find((b) => b.id === recipeId);
+    if (bm?.imageUri) setImageUri(bm.imageUri);
+  }, [recipeId, cacheVersion]);
+
+  const toggleBookmark = async () => {
+    if (!recipeId || bookmarkBusy) return;
+    setBookmarkBusy(true);
+    try {
+      if (bookmarked) {
+        await removeChatBookmark(recipeId);
+      } else {
+        await addChatBookmark(recipeId, recipe, imageUri);
+      }
+    } finally {
+      setBookmarkBusy(false);
+    }
+  };
 
   const [activeMacro, setActiveMacro] = useState<MacroKey | null>(null);
   const [tdee, setTdee] = useState<number | null>(null);
@@ -100,10 +186,14 @@ export default function ChatRecipeDetailScreen() {
       pathname: '/create-post',
       params: {
         prefillTitle: recipe.title,
-        prefillDescription: recipe.summary ?? recipe.why_this_works ?? '',
+        prefillDescription: recipe.summary || recipe.why_this_works || '',
         prefillIngredients: recipe.ingredients.join('\n'),
         prefillSteps: recipe.steps.map((s, i) => `${i + 1}. ${s}`).join('\n'),
         prefillImage: imageUri ?? '',
+        // Flag this post as AI-authored so it stays in the "Saved AI Recipes"
+        // strip when the user bookmarks it from the community feed.
+        aiOrigin: '1',
+        aiRecipeJson: JSON.stringify(recipe),
       },
     } as any);
   };
@@ -117,7 +207,7 @@ export default function ChatRecipeDetailScreen() {
       />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}>
         <View style={[styles.topRow, { paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity style={styles.circleBtn} onPress={() => router.back()} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.circleBtn} onPress={goBack} activeOpacity={0.8}>
             <Ionicons name="chevron-back" size={22} color="#000" />
           </TouchableOpacity>
           <ThemedText style={styles.title} numberOfLines={2}>
@@ -125,8 +215,9 @@ export default function ChatRecipeDetailScreen() {
           </ThemedText>
           <TouchableOpacity
             style={[styles.circleBtn, bookmarked && { backgroundColor: ORANGE }]}
-            onPress={() => setBookmarked((b) => !b)}
-            activeOpacity={0.8}>
+            onPress={() => void toggleBookmark()}
+            activeOpacity={0.8}
+            disabled={bookmarkBusy}>
             <Ionicons name={bookmarked ? 'bookmark' : 'bookmark-outline'} size={20} color="#111" />
           </TouchableOpacity>
         </View>
@@ -134,7 +225,17 @@ export default function ChatRecipeDetailScreen() {
         {/* Image / upload area */}
         {imageUri ? (
           <View style={styles.imageWrap}>
-            <Image source={{ uri: imageUri }} style={styles.image} contentFit="cover" />
+            <Image
+              source={{ uri: imageUri }}
+              style={styles.image}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={250}
+              placeholderContentFit="cover"
+              placeholder={{
+                uri: stockFoodImage(recipe.title || '', seedFromId(recipeId)),
+              }}
+            />
             <View style={styles.imageActions}>
               <TouchableOpacity style={styles.imageActionPill} onPress={pickImage} activeOpacity={0.85}>
                 <Ionicons name="image-outline" size={14} color="#111" />

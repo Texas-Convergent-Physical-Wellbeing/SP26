@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -16,13 +16,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { addUserPost } from '@/services/user-posts-store';
+import { DEFAULT_CATEGORIES, inferCategories } from '@/utils/synthesize-recipe-facts';
 
 const CREAM = '#fff4db';
 const ORANGE = '#ffb259';
 const GREEN_TAG = '#c7e890';
 const BORDER = 'rgba(0,0,0,0.12)';
-
-const TAGS = ['Vegetarian', 'Vegan', 'Mexican', 'High-Protein', 'Gluten-Free', 'Low-Carb', 'Diabetes'];
 
 export default function CreatePostScreen() {
   const insets = useSafeAreaInsets();
@@ -33,10 +33,17 @@ export default function CreatePostScreen() {
     prefillIngredients?: string;
     prefillSteps?: string;
     prefillImage?: string;
+    /** "1" when the prefill came from the Meal Mate chat — marks the post AI-origin. */
+    aiOrigin?: string;
+    /** Stringified `ChatRecipePayload` snapshot so we can render it as an AI card later. */
+    aiRecipeJson?: string;
   }>();
 
   const [recipeName, setRecipeName] = useState(() => String(params.prefillTitle ?? ''));
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  // Multi-select: users can pick any number of categories.
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [customTag, setCustomTag] = useState('');
+  const [customTagMode, setCustomTagMode] = useState(false);
   const [description, setDescription] = useState(() => {
     const desc = String(params.prefillDescription ?? '');
     const steps = String(params.prefillSteps ?? '');
@@ -48,6 +55,20 @@ export default function CreatePostScreen() {
     return img ? img : null;
   });
   const [submitted, setSubmitted] = useState(false);
+
+  // Smart category suggestions based on title + ingredients + instructions.
+  // Recomputes live as the user types so the chips reflect the current recipe.
+  const suggestions = useMemo(
+    () => inferCategories(recipeName, ingredients, description),
+    [recipeName, ingredients, description],
+  );
+
+  // Build the chip order: suggested matches first, then remaining defaults.
+  const categoryChips = useMemo(() => {
+    const suggestedSet = new Set(suggestions.matches);
+    const trailing = DEFAULT_CATEGORIES.filter((t) => !suggestedSet.has(t));
+    return [...suggestions.matches, ...trailing];
+  }, [suggestions.matches]);
 
   const canSubmit = recipeName.trim().length > 0;
 
@@ -68,9 +89,50 @@ export default function CreatePostScreen() {
     }
   };
 
-  const handleSubmit = () => {
-    if (!canSubmit) return;
-    setSubmitted(true);
+  const [submitting, setSubmitting] = useState(false);
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    // Assemble the final tag list: user-selected chips + an optional custom
+    // free-text tag. If the user picked nothing at all, fall back to the AI's
+    // primary suggestion so the card always has a helpful pill.
+    const custom = customTagMode ? customTag.trim() : '';
+    const chosen: string[] = [...selectedTags];
+    if (custom && !chosen.includes(custom)) chosen.push(custom);
+    if (chosen.length === 0 && suggestions.primary) chosen.push(suggestions.primary);
+    const primaryTag = chosen[0] ?? null;
+
+    // Carry through AI-origin metadata if this post was prefilled from the Meal Mate chat.
+    const aiOrigin = String(params.aiOrigin ?? '') === '1';
+    let aiRecipe: any = null;
+    if (aiOrigin && params.aiRecipeJson) {
+      try {
+        aiRecipe = JSON.parse(String(params.aiRecipeJson));
+      } catch {
+        aiRecipe = null;
+      }
+    }
+
+    try {
+      await addUserPost({
+        title: recipeName.trim(),
+        description: description.trim(),
+        ingredients: ingredients.trim(),
+        imageUri: imageUri,
+        tag: primaryTag,
+        tags: chosen,
+        ai_origin: aiOrigin || undefined,
+        ai_recipe: aiRecipe,
+      });
+      setSubmitted(true);
+    } catch (err) {
+      Alert.alert(
+        'Could not post',
+        err instanceof Error ? err.message : 'Something went wrong. Try again.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (submitted) {
@@ -150,25 +212,98 @@ export default function CreatePostScreen() {
           returnKeyType="next"
         />
 
-        {/* Tag */}
-        <ThemedText style={styles.label}>Category</ThemedText>
+        {/* Tag — suggested-first ordering, live-inferred from the recipe text */}
+        <View style={styles.labelRow}>
+          <ThemedText style={[styles.label, styles.labelInRow]}>Category</ThemedText>
+          {suggestions.matches.length > 0 && (
+            <View style={styles.suggestPill}>
+              <Ionicons name="sparkles" size={11} color="#7a4720" />
+              <ThemedText style={styles.suggestPillText}>
+                Suggested from your recipe
+              </ThemedText>
+            </View>
+          )}
+        </View>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tagRow}>
-          {TAGS.map(tag => (
-            <TouchableOpacity
-              key={tag}
-              style={[styles.tagChip, selectedTag === tag && styles.tagChipActive]}
-              onPress={() => setSelectedTag(prev => (prev === tag ? null : tag))}
-              activeOpacity={0.75}>
-              <ThemedText
-                style={[styles.tagChipText, selectedTag === tag && styles.tagChipTextActive]}>
-                {tag}
-              </ThemedText>
-            </TouchableOpacity>
-          ))}
+          {categoryChips.map((tag, idx) => {
+            const isSelected = selectedTags.has(tag);
+            const isSuggested = idx < suggestions.matches.length;
+            return (
+              <TouchableOpacity
+                key={tag}
+                style={[
+                  styles.tagChip,
+                  isSuggested && !isSelected && styles.tagChipSuggested,
+                  isSelected && styles.tagChipActive,
+                ]}
+                onPress={() => {
+                  // Multi-select: toggle the tag in the selected set. The custom
+                  // input stays available — users can combine chips + custom.
+                  setSelectedTags((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(tag)) next.delete(tag);
+                    else next.add(tag);
+                    return next;
+                  });
+                }}
+                activeOpacity={0.75}>
+                {isSelected && (
+                  <Ionicons
+                    name="checkmark"
+                    size={12}
+                    color="#000"
+                    style={{ marginRight: 4 }}
+                  />
+                )}
+                {isSuggested && !isSelected && (
+                  <Ionicons
+                    name="sparkles"
+                    size={11}
+                    color="#7a4720"
+                    style={{ marginRight: 4 }}
+                  />
+                )}
+                <ThemedText
+                  style={[styles.tagChipText, isSelected && styles.tagChipTextActive]}>
+                  {tag}
+                </ThemedText>
+              </TouchableOpacity>
+            );
+          })}
+          {/* Custom "Other" chip opens an inline text field */}
+          <TouchableOpacity
+            style={[
+              styles.tagChip,
+              customTagMode && styles.tagChipActive,
+            ]}
+            onPress={() => setCustomTagMode((v) => !v)}
+            activeOpacity={0.75}>
+            <Ionicons
+              name="add"
+              size={13}
+              color={customTagMode ? '#000' : '#555'}
+              style={{ marginRight: 4 }}
+            />
+            <ThemedText
+              style={[styles.tagChipText, customTagMode && styles.tagChipTextActive]}>
+              {customTagMode ? 'Custom' : 'Other'}
+            </ThemedText>
+          </TouchableOpacity>
         </ScrollView>
+        {customTagMode && (
+          <TextInput
+            style={[styles.input, { marginTop: 8 }]}
+            placeholder="Type your own category (e.g. Bento, Raw Vegan)"
+            placeholderTextColor="rgba(0,0,0,0.35)"
+            value={customTag}
+            onChangeText={setCustomTag}
+            maxLength={30}
+            returnKeyType="done"
+          />
+        )}
 
         {/* Ingredients */}
         <ThemedText style={styles.label}>Ingredients</ThemedText>
@@ -198,10 +333,13 @@ export default function CreatePostScreen() {
 
         {/* Submit */}
         <TouchableOpacity
-          style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
-          onPress={handleSubmit}
-          activeOpacity={canSubmit ? 0.8 : 1}>
-          <ThemedText style={styles.submitBtnText}>Post Recipe</ThemedText>
+          style={[styles.submitBtn, (!canSubmit || submitting) && styles.submitBtnDisabled]}
+          onPress={() => void handleSubmit()}
+          activeOpacity={canSubmit && !submitting ? 0.8 : 1}
+          disabled={!canSubmit || submitting}>
+          <ThemedText style={styles.submitBtnText}>
+            {submitting ? 'Posting…' : 'Post Recipe'}
+          </ThemedText>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -303,12 +441,18 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#fff',
     borderRadius: 35,
     borderWidth: 1,
     borderColor: BORDER,
     paddingHorizontal: 14,
     paddingVertical: 7,
+  },
+  tagChipSuggested: {
+    backgroundColor: '#fff4db',
+    borderColor: '#e8cf98',
   },
   tagChipActive: {
     backgroundColor: GREEN_TAG,
@@ -321,6 +465,33 @@ const styles = StyleSheet.create({
   tagChipTextActive: {
     color: '#000',
     fontWeight: '600',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  labelInRow: {
+    marginTop: 0,
+    marginBottom: 0,
+  },
+  suggestPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fff4db',
+    borderRadius: 100,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#f0e4cb',
+  },
+  suggestPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#7a4720',
   },
   submitBtn: {
     marginTop: 28,
