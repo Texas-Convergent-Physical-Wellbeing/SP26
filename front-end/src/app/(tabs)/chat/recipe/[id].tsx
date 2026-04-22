@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -31,6 +30,7 @@ import { seedFromId, stockFoodImage } from '@/utils/synthesize-recipe-facts';
 const CREAM = '#fff4db';
 const ORANGE = '#ffb259';
 const GREEN_SOFT = '#c7e890';
+const BROWN = '#7a4720';
 const PROTEIN_COLOR = '#ffb259';
 const CARBS_COLOR = '#c7e890';
 const FAT_COLOR = '#f08a50';
@@ -198,13 +198,15 @@ export default function ChatRecipeDetailScreen() {
     } as any);
   };
 
+  // Heuristic prep/cook/serves info so the chat recipe card matches the
+  // curated recipe detail's stat-pill row visually. The backend chat payload
+  // doesn't carry these explicitly yet, so derive them from the structure.
+  const prepTime = recipe.ingredients.length > 8 ? '20 min' : '10 min';
+  const cookTime = recipe.steps.length > 4 ? '25 min' : '15 min';
+  const servings = 2;
+
   return (
     <View style={styles.root}>
-      <LinearGradient
-        colors={['#f6d0cf', '#fff4db', '#b9e59a', '#f8a06a']}
-        locations={[0, 0.38, 0.7, 1]}
-        style={StyleSheet.absoluteFill}
-      />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}>
         <View style={[styles.topRow, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity style={styles.circleBtn} onPress={goBack} activeOpacity={0.8}>
@@ -277,22 +279,43 @@ export default function ChatRecipeDetailScreen() {
 
         {tab === 'recipe' ? (
           <>
-            <ThemedText style={styles.sectionTitle}>Ingredients:</ThemedText>
-            <View style={styles.card}>
+            {/* Stats row — matches the curated recipe detail screen. */}
+            <View style={styles.statsRow}>
+              <View style={styles.statPill}>
+                <Ionicons name="time-outline" size={16} color={BROWN} />
+                <ThemedText style={styles.statLabel}>Prep</ThemedText>
+                <ThemedText style={styles.statValue}>{prepTime}</ThemedText>
+              </View>
+              <View style={styles.statPill}>
+                <Ionicons name="flame-outline" size={16} color={BROWN} />
+                <ThemedText style={styles.statLabel}>Cook</ThemedText>
+                <ThemedText style={styles.statValue}>{cookTime}</ThemedText>
+              </View>
+              <View style={styles.statPill}>
+                <Ionicons name="people-outline" size={16} color={BROWN} />
+                <ThemedText style={styles.statLabel}>Serves</ThemedText>
+                <ThemedText style={styles.statValue}>{servings}</ThemedText>
+              </View>
+            </View>
+
+            <ThemedText style={styles.sectionTitle}>Ingredients</ThemedText>
+            <View style={styles.listBlock}>
               {recipe.ingredients.map((item, idx) => (
-                <View key={`${item}-${idx}`} style={styles.listRow}>
-                  <Ionicons name="checkmark-circle" size={18} color={ORANGE} />
-                  <ThemedText style={styles.listText}>{item}</ThemedText>
+                <View key={`${item}-${idx}`} style={styles.ingredientRow}>
+                  <View style={styles.checkCircle}>
+                    <Ionicons name="checkmark" size={12} color="#fff" />
+                  </View>
+                  <ThemedText style={styles.ingredientText}>{item}</ThemedText>
                 </View>
               ))}
             </View>
 
-            <ThemedText style={styles.sectionTitle}>Steps:</ThemedText>
-            <View style={styles.card}>
+            <ThemedText style={[styles.sectionTitle, { marginTop: 20 }]}>Steps</ThemedText>
+            <View style={styles.listBlock}>
               {recipe.steps.map((step, i) => (
                 <View key={`${step}-${i}`} style={styles.stepRow}>
-                  <View style={styles.stepNum}>
-                    <ThemedText style={styles.stepNumText}>{i + 1}</ThemedText>
+                  <View style={[styles.stepCircle, { backgroundColor: i % 2 === 0 ? ORANGE : GREEN_SOFT }]}>
+                    <ThemedText style={styles.stepNumber}>{i + 1}</ThemedText>
                   </View>
                   <ThemedText style={styles.stepText}>{step}</ThemedText>
                 </View>
@@ -365,7 +388,7 @@ export default function ChatRecipeDetailScreen() {
             </View>
 
             {/* ── Health Condition Alignment ─────────────────────────────── */}
-            <ThemedText style={styles.sectionTitle}>Health Condition Alignment</ThemedText>
+            <ThemedText style={[styles.sectionTitle, { marginTop: 20 }]}>Health Condition Alignment</ThemedText>
             <View style={styles.card}>
               {(() => {
                 const tags = (recipe as any).health_tags as string[] | undefined;
@@ -391,7 +414,7 @@ export default function ChatRecipeDetailScreen() {
             </View>
 
             {/* ── Calorie Budget ─────────────────────────────────────────── */}
-            <ThemedText style={styles.sectionTitle}>Calorie Budget</ThemedText>
+            <ThemedText style={[styles.sectionTitle, { marginTop: 20 }]}>Calorie Budget</ThemedText>
             <View style={styles.card}>
               {(() => {
                 const mealKcal = recipe.macros?.calories ?? 0;
@@ -432,7 +455,7 @@ export default function ChatRecipeDetailScreen() {
             </View>
 
             {/* ── Why This Works ─────────────────────────────────────────── */}
-            <ThemedText style={styles.sectionTitle}>Why This Works?</ThemedText>
+            <ThemedText style={[styles.sectionTitle, { marginTop: 20 }]}>Why This Works?</ThemedText>
             <View style={styles.card}>
               <ThemedText style={styles.whyText}>{recipe.why_this_works ?? '—'}</ThemedText>
             </View>
@@ -538,7 +561,7 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 14, fontWeight: '800', color: '#333' },
   tabLabelActive: { color: '#fff' },
 
-  sectionTitle: { marginTop: 14, fontSize: 15, fontWeight: '800', color: '#000' },
+  sectionTitle: { marginTop: 14, fontSize: 18, fontWeight: '800', color: '#000', marginBottom: 12 },
   card: {
     marginTop: 8,
     backgroundColor: '#fff',
@@ -548,21 +571,71 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.10)',
     gap: 8,
   },
-  listRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  listText: { flex: 1, fontSize: 13, lineHeight: 18, color: '#111' },
 
-  stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  stepNum: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+  /* Stats row (matches curated recipe detail) */
+  statsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  statPill: {
+    flex: 1,
+    backgroundColor: '#fff4db',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#e8dcc8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    gap: 2,
+  },
+  statLabel: { fontSize: 11, color: '#888', fontWeight: '500' },
+  statValue: { fontSize: 13, fontWeight: '700', color: BROWN },
+
+  /* Lists (no card wrapper — matches curated recipe detail) */
+  listBlock: { gap: 0 },
+  ingredientRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 10,
+  },
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: ORANGE,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
+    flexShrink: 0,
   },
-  stepNumText: { color: '#fff', fontWeight: '800', fontSize: 13 },
-  stepText: { flex: 1, fontSize: 13, lineHeight: 18, color: '#111' },
+  ingredientText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#222',
+    flex: 1,
+    lineHeight: 22,
+  },
+
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 14,
+  },
+  stepCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  stepNumber: { fontSize: 13, fontWeight: '800', color: '#000' },
+  stepText: { flex: 1, fontSize: 14, lineHeight: 22, color: '#333' },
 
   factLine: { fontSize: 13, color: '#111' },
   whyText: { fontSize: 13, lineHeight: 20, color: '#111' },

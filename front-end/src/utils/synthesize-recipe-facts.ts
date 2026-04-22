@@ -500,8 +500,19 @@ export function userPostToRecipe(post: UserPostLike): Recipe {
     Array.from(post.id).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0),
   );
 
-  const whyItWorks = post.description.trim()
-    ? `${post.description.trim().slice(0, 220)}`
+  // The description field on community posts frequently contains a blurb
+  // AND the numbered recipe steps (since users paste the whole thing in).
+  // Strip those numbered lines out so the paragraph renders as a summary
+  // only — the same steps are already rendered as styled cards below.
+  const cleanDescription = post.description
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !/^\d+[.)]\s*/.test(l))
+    .join(' ')
+    .trim();
+
+  const whyItWorks = cleanDescription
+    ? cleanDescription.slice(0, 220)
     : `A home-cooked **${post.title}** that fits comfortably into a balanced daily routine. Portion and seasoning to taste.`;
 
   return {
@@ -514,7 +525,7 @@ export function userPostToRecipe(post: UserPostLike): Recipe {
     cookTime,
     servings: 2,
     ingredients: ingredients.length ? ingredients : ['Ingredients not specified'],
-    description: post.description || `A home-cooked ${post.title}.`,
+    description: cleanDescription || `A home-cooked ${post.title}.`,
     steps: steps.length ? steps : ['Prepare ingredients as described.', 'Cook to preference and serve.'],
     calories,
     carbsPercent: macros.carbsPercent,
