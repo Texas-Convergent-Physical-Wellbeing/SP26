@@ -34,6 +34,9 @@ const BROWN = '#7a4720';
 const PROTEIN_COLOR = '#ffb259';
 const CARBS_COLOR = '#c7e890';
 const FAT_COLOR = '#f08a50';
+// Height of the hero image block, matches the community recipe detail so
+// both screens feel visually identical at the top.
+const HERO_HEIGHT = 300;
 
 type Tab = 'recipe' | 'facts';
 type MacroKey = 'protein' | 'carbs' | 'fat';
@@ -205,80 +208,104 @@ export default function ChatRecipeDetailScreen() {
   const cookTime = recipe.steps.length > 4 ? '25 min' : '15 min';
   const servings = 2;
 
+  // The hero image always renders something — either the user-supplied /
+  // AI-generated image, or a stock fallback — so the layout stays stable
+  // and matches the community recipe detail exactly.
+  const heroImage = imageUri ?? stockFoodImage(recipe.title || '', seedFromId(recipeId));
+
   return (
     <View style={styles.root}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]}>
-        <View style={[styles.topRow, { paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity style={styles.circleBtn} onPress={goBack} activeOpacity={0.8}>
-            <Ionicons name="chevron-back" size={22} color="#000" />
-          </TouchableOpacity>
-          <ThemedText style={styles.title} numberOfLines={2}>
-            {recipe.title}
-          </ThemedText>
-          <TouchableOpacity
-            style={[styles.circleBtn, bookmarked && { backgroundColor: ORANGE }]}
-            onPress={() => void toggleBookmark()}
-            activeOpacity={0.8}
-            disabled={bookmarkBusy}>
-            <Ionicons name={bookmarked ? 'bookmark' : 'bookmark-outline'} size={20} color="#111" />
-          </TouchableOpacity>
-        </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
+        {/* ── Hero block — mirrors /recipe/[id] exactly so generated and */}
+        {/* community recipes feel like the same screen. ──────────────── */}
+        <View style={{ height: HERO_HEIGHT }}>
+          <Image
+            source={{ uri: heroImage }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={250}
+            placeholderContentFit="cover"
+            placeholder={{
+              uri: stockFoodImage(recipe.title || '', seedFromId(recipeId)),
+            }}
+          />
+          <View style={[styles.heroOverlay, { paddingTop: insets.top }]}>
+            <View style={styles.heroTopRow}>
+              <TouchableOpacity style={styles.circleBtn} onPress={goBack} activeOpacity={0.8}>
+                <Ionicons name="chevron-back" size={22} color="#000" />
+              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {imageUri ? (
+                  <>
+                    <TouchableOpacity
+                      style={styles.circleBtn}
+                      onPress={pickImage}
+                      activeOpacity={0.8}
+                      accessibilityLabel="Replace photo">
+                      <Ionicons name="image-outline" size={18} color="#111" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.circleBtn}
+                      onPress={removeImage}
+                      activeOpacity={0.8}
+                      accessibilityLabel="Remove photo">
+                      <Ionicons name="trash-outline" size={18} color="#111" />
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.circleBtn}
+                    onPress={pickImage}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Add photo">
+                    <Ionicons name="camera-outline" size={18} color="#111" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={[styles.circleBtn, { backgroundColor: ORANGE }]}
+                  onPress={() => void toggleBookmark()}
+                  activeOpacity={0.8}
+                  disabled={bookmarkBusy}
+                  accessibilityLabel={bookmarked ? 'Remove bookmark' : 'Add bookmark'}>
+                  <Ionicons
+                    name={bookmarked ? 'bookmark' : 'bookmark-outline'}
+                    size={20}
+                    color={bookmarked ? BROWN : '#333'}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
 
-        {/* Image / upload area */}
-        {imageUri ? (
-          <View style={styles.imageWrap}>
-            <Image
-              source={{ uri: imageUri }}
-              style={styles.image}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              transition={250}
-              placeholderContentFit="cover"
-              placeholder={{
-                uri: stockFoodImage(recipe.title || '', seedFromId(recipeId)),
-              }}
-            />
-            <View style={styles.imageActions}>
-              <TouchableOpacity style={styles.imageActionPill} onPress={pickImage} activeOpacity={0.85}>
-                <Ionicons name="image-outline" size={14} color="#111" />
-                <ThemedText style={styles.imageActionText}>Replace</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.imageActionPill} onPress={removeImage} activeOpacity={0.85}>
-                <Ionicons name="trash-outline" size={14} color="#111" />
-                <ThemedText style={styles.imageActionText}>Remove</ThemedText>
-              </TouchableOpacity>
+            <View style={styles.heroTitleRow}>
+              <ThemedText style={styles.heroTitle} numberOfLines={3}>
+                {recipe.title}
+              </ThemedText>
+              <View style={styles.heroTag}>
+                <ThemedText style={styles.heroTagText}>AI-generated</ThemedText>
+              </View>
             </View>
           </View>
-        ) : (
-          <TouchableOpacity style={styles.uploadCard} onPress={pickImage} activeOpacity={0.85}>
-            <View style={styles.uploadIcon}>
-              <Ionicons name="cloud-upload-outline" size={22} color="#111" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <ThemedText style={styles.uploadTitle}>Add a photo</ThemedText>
-              <ThemedText style={styles.uploadSub}>Optional — upload an image of your dish</ThemedText>
-            </View>
-          </TouchableOpacity>
-        )}
+        </View>
 
-        <ThemedText style={styles.summary}>{recipe.summary}</ThemedText>
-
-        <TouchableOpacity style={styles.postBtn} onPress={postToCommunity} activeOpacity={0.85}>
-          <Ionicons name="share-outline" size={16} color="#fff" />
-          <ThemedText style={styles.postBtnText}>Post to Community</ThemedText>
-        </TouchableOpacity>
-
+        {/* ── Tabs ── */}
         <View style={styles.tabRow}>
-          <TouchableOpacity style={[styles.tabBtn, tab === 'recipe' && styles.tabBtnActive]} onPress={() => setTab('recipe')} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={[styles.tabBtn, tab === 'recipe' && styles.tabBtnActive]}
+            onPress={() => setTab('recipe')}
+            activeOpacity={0.85}>
             <ThemedText style={[styles.tabLabel, tab === 'recipe' && styles.tabLabelActive]}>Recipe</ThemedText>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tabBtn, tab === 'facts' && styles.tabBtnActive]} onPress={() => setTab('facts')} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={[styles.tabBtn, tab === 'facts' && styles.tabBtnActive]}
+            onPress={() => setTab('facts')}
+            activeOpacity={0.85}>
             <ThemedText style={[styles.tabLabel, tab === 'facts' && styles.tabLabelActive]}>Facts</ThemedText>
           </TouchableOpacity>
         </View>
 
         {tab === 'recipe' ? (
-          <>
+          <View style={styles.tabContent}>
             {/* Stats row — matches the curated recipe detail screen. */}
             <View style={styles.statsRow}>
               <View style={styles.statPill}>
@@ -297,6 +324,17 @@ export default function ChatRecipeDetailScreen() {
                 <ThemedText style={styles.statValue}>{servings}</ThemedText>
               </View>
             </View>
+
+            {/* Summary paragraph under the stats row (mirrors community) */}
+            {recipe.summary ? (
+              <ThemedText style={styles.description}>{recipe.summary}</ThemedText>
+            ) : null}
+
+            {/* Primary CTA — post this AI recipe to the community feed */}
+            <TouchableOpacity style={styles.postBtn} onPress={postToCommunity} activeOpacity={0.85}>
+              <Ionicons name="share-outline" size={16} color="#fff" />
+              <ThemedText style={styles.postBtnText}>Post to Community</ThemedText>
+            </TouchableOpacity>
 
             <ThemedText style={styles.sectionTitle}>Ingredients</ThemedText>
             <View style={styles.listCard}>
@@ -325,9 +363,9 @@ export default function ChatRecipeDetailScreen() {
                 </View>
               ))}
             </View>
-          </>
+          </View>
         ) : (
-          <>
+          <View style={styles.tabContent}>
             {/* ── Macronutrients ─────────────────────────────────────────── */}
             <ThemedText style={styles.sectionTitle}>Macronutrients</ThemedText>
             <View style={styles.card}>
@@ -463,7 +501,7 @@ export default function ChatRecipeDetailScreen() {
             <View style={styles.card}>
               <ThemedText style={styles.whyText}>{recipe.why_this_works ?? '—'}</ThemedText>
             </View>
-          </>
+          </View>
         )}
       </ScrollView>
     </View>
@@ -472,75 +510,87 @@ export default function ChatRecipeDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: CREAM },
-  scroll: { paddingHorizontal: 16, paddingTop: 2 },
 
-  topRow: {
+  /* ── Hero (mirrors /recipe/[id]) ───────────────────────────────────── */
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    padding: 12,
+  },
+  heroTopRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
   },
   circleBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.88)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { flex: 1, fontSize: 16, fontWeight: '800', color: '#000', textAlign: 'center' },
-  summary: { marginTop: 12, fontSize: 13, lineHeight: 20, color: '#222' },
-
-  imageWrap: {
-    marginTop: 12,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.10)',
+  heroTitleRow: {
+    gap: 6,
   },
-  image: { width: '100%', height: 200, backgroundColor: '#fff' },
-  imageActions: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    flexDirection: 'row',
-    gap: 8,
+  heroTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+    lineHeight: 32,
   },
-  imageActionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 100,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  imageActionText: { fontSize: 12, fontWeight: '700', color: '#111' },
-
-  uploadCard: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: 'rgba(0,0,0,0.18)',
-  },
-  uploadIcon: {
-    width: 40,
-    height: 40,
+  heroTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: ORANGE,
     borderRadius: 20,
-    backgroundColor: '#fff4db',
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
   },
-  uploadTitle: { fontSize: 14, fontWeight: '800', color: '#111' },
-  uploadSub: { fontSize: 12, color: '#555', marginTop: 2 },
+  heroTagText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
 
+  /* ── Tabs (mirrors /recipe/[id]) ───────────────────────────────────── */
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: CREAM,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4,
+    gap: 10,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 25,
+    alignItems: 'center',
+    backgroundColor: '#e8dcc8',
+  },
+  tabBtnActive: { backgroundColor: ORANGE },
+  tabLabel: { fontSize: 15, fontWeight: '600', color: '#888' },
+  tabLabelActive: { color: '#fff' },
+
+  /* Shared content container */
+  tabContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+
+  /* Description / summary paragraph */
+  description: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#444',
+    marginBottom: 16,
+  },
+
+  /* Post to Community CTA */
   postBtn: {
-    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -548,24 +598,11 @@ const styles = StyleSheet.create({
     backgroundColor: ORANGE,
     borderRadius: 100,
     paddingVertical: 13,
+    marginBottom: 20,
   },
   postBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
 
-  tabRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  tabBtn: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 100,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
-  },
-  tabBtnActive: { backgroundColor: ORANGE, borderColor: ORANGE },
-  tabLabel: { fontSize: 14, fontWeight: '800', color: '#333' },
-  tabLabelActive: { color: '#fff' },
-
-  sectionTitle: { marginTop: 14, fontSize: 18, fontWeight: '800', color: '#000', marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#000', marginBottom: 12 },
   card: {
     marginTop: 8,
     backgroundColor: '#fff',
@@ -580,8 +617,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 14,
-    marginBottom: 4,
+    marginBottom: 16,
   },
   statPill: {
     flex: 1,

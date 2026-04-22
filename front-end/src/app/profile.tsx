@@ -30,25 +30,30 @@ import { resetQuizStore } from '@/services/quiz-store';
 const DEFAULT_AVATAR = require('../../assets/images/profile-default.png');
 const PENCIL_ICON = require('../../assets/images/icon-edit-pencil.png');
 
-/** Figma wireframe (node 46:464) — Low-Fi Physical Health */
+// Design tokens harmonised with the rest of the app (recipe detail, community,
+// chat). The profile screen previously used a much more saturated red-orange
+// (#e2652f) and hard black 1px card borders which made it feel like a
+// different app — we now use the same soft peach `#ffb259`, brown text, and
+// hairline borders with a subtle shadow.
 const CREAM = '#fff4db';
-const ORANGE = '#e2652f';
-const BLACK = '#000000';
-const TAB_MUTED = '#393939';
-const TAB_MUTED_ALT = '#383838';
+const ORANGE = '#ffb259';
+const BROWN = '#7a4720';
+const HAIRLINE = 'rgba(0,0,0,0.08)';
+const TAB_MUTED = '#6b6b6b';
+const TAB_MUTED_ALT = '#6b6b6b';
 const SHADOW = {
   shadowColor: '#000',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.1,
-  shadowRadius: 4,
-  elevation: 4,
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  elevation: 2,
 };
 const SHADOW_STRONG = {
   shadowColor: '#000',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.2,
-  shadowRadius: 4,
-  elevation: 5,
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.1,
+  shadowRadius: 10,
+  elevation: 3,
 };
 
 const CUISINE_LABELS: Record<string, string> = {
@@ -419,7 +424,10 @@ export default function ProfileScreen() {
                   style={[styles.tabCell, on && styles.tabCellActive]}
                   onPress={() => setActiveTab(key)}
                   activeOpacity={0.85}>
-                  <ThemedText style={[styles.tabText, on && styles.tabTextActive]}>
+                  <ThemedText
+                    style={[styles.tabText, on && styles.tabTextActive]}
+                    numberOfLines={1}
+                    allowFontScaling={false}>
                     {label}
                   </ThemedText>
                 </TouchableOpacity>
@@ -594,8 +602,8 @@ const styles = StyleSheet.create({
     height: 112,
     borderRadius: 56,
     backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: BLACK,
+    borderWidth: 3,
+    borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -606,9 +614,9 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   nameTitle: {
-    fontSize: 25,
-    fontWeight: '400',
-    color: ORANGE,
+    fontSize: 24,
+    fontWeight: '700',
+    color: BROWN,
     textAlign: 'center',
     letterSpacing: -0.4,
     lineHeight: 30,
@@ -622,10 +630,10 @@ const styles = StyleSheet.create({
   },
   goalsPill: {
     backgroundColor: '#fff',
-    borderRadius: 25,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: BLACK,
-    paddingVertical: 14,
+    borderColor: HAIRLINE,
+    paddingVertical: 16,
     paddingHorizontal: Spacing.four,
     paddingBottom: 18,
     width: '100%',
@@ -633,12 +641,12 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   goalsPillLabel: {
-    fontSize: 17,
-    fontWeight: '500',
-    color: ORANGE,
-    letterSpacing: -0.4,
+    fontSize: 16,
+    fontWeight: '700',
+    color: BROWN,
+    letterSpacing: -0.2,
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   goalsPencil: {
     position: 'absolute',
@@ -658,18 +666,19 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   pencilImage: {
-    width: 32,
-    height: 32,
+    width: 22,
+    height: 22,
+    opacity: 0.55,
   },
   calorieCard: {
     flexDirection: 'row',
     width: '100%',
-    height: 107,
-    borderRadius: 25,
+    height: 104,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: BLACK,
+    borderColor: HAIRLINE,
     overflow: 'hidden',
-    marginBottom: Spacing.four,
+    marginBottom: Spacing.three,
     backgroundColor: '#fff',
   },
   calorieLeft: {
@@ -680,17 +689,16 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   calorieLeftTitle: {
-    fontSize: 25,
-    fontWeight: '400',
+    fontSize: 22,
+    fontWeight: '700',
     color: '#fff',
     letterSpacing: -0.4,
-    lineHeight: 28,
+    lineHeight: 26,
     textAlign: 'center',
   },
   calorieDivider: {
     width: 1,
-    backgroundColor: BLACK,
-    opacity: 0.35,
+    backgroundColor: HAIRLINE,
   },
   calorieRight: {
     flex: 1,
@@ -701,18 +709,18 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   calorieNumber: {
-    fontSize: 25,
-    fontWeight: '400',
-    color: ORANGE,
+    fontSize: 26,
+    fontWeight: '700',
+    color: BROWN,
     letterSpacing: -0.4,
-    lineHeight: 28,
+    lineHeight: 30,
   },
   caloriePencil: { padding: 4 },
   tabShell: {
     width: '100%',
     borderRadius: 100,
     borderWidth: 1,
-    borderColor: BLACK,
+    borderColor: HAIRLINE,
     overflow: 'hidden',
     marginBottom: Spacing.three,
     backgroundColor: '#fff',
@@ -720,12 +728,16 @@ const styles = StyleSheet.create({
   },
   tabShellContent: {
     flexDirection: 'row',
-    minWidth: '100%',
+    // `flexGrow: 1` lets the 4 cells fill the pill on wide screens (so the
+    // Cuisines / Allergens / Conditions / Restrictions tabs are spread
+    // evenly) while each cell's natural min-width (below) prevents the
+    // longest label from wrapping onto two lines on narrower devices.
+    flexGrow: 1,
   },
   tabCell: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+    flexGrow: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#fff',
@@ -734,10 +746,10 @@ const styles = StyleSheet.create({
     backgroundColor: ORANGE,
   },
   tabText: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '700',
     color: TAB_MUTED,
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   tabTextActive: {
     color: '#fff',
@@ -747,10 +759,10 @@ const styles = StyleSheet.create({
   },
   chipPanel: {
     width: '100%',
-    minHeight: 106,
-    borderRadius: 25,
+    minHeight: 100,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: BLACK,
+    borderColor: HAIRLINE,
     backgroundColor: '#fff',
     marginBottom: Spacing.five,
     position: 'relative',
@@ -763,24 +775,22 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    rowGap: 12,
+    gap: 10,
+    rowGap: 10,
   },
   chip: {
     backgroundColor: ORANGE,
     borderRadius: 100,
-    borderWidth: 1,
-    borderColor: ORANGE,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    minHeight: 35,
+    paddingVertical: 7,
+    paddingHorizontal: 18,
+    minHeight: 32,
     justifyContent: 'center',
   },
   chipLabel: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '400',
-    letterSpacing: -0.4,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   chipPanelPencil: {
     position: 'absolute',
@@ -833,24 +843,25 @@ const styles = StyleSheet.create({
     backgroundColor: CREAM,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: BLACK,
+    borderColor: HAIRLINE,
     padding: Spacing.four,
     width: '100%',
+    ...SHADOW_STRONG,
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: ORANGE,
+    fontWeight: '800',
+    color: BROWN,
     marginBottom: Spacing.two,
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: BLACK,
+    borderColor: HAIRLINE,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
-    color: BLACK,
+    color: '#111',
     backgroundColor: '#fff',
     marginBottom: Spacing.three,
   },
@@ -882,10 +893,10 @@ const styles = StyleSheet.create({
   },
   festiveCard: {
     backgroundColor: '#fff',
-    borderRadius: 25,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: BLACK,
-    paddingVertical: 14,
+    borderColor: HAIRLINE,
+    paddingVertical: 16,
     paddingHorizontal: Spacing.four,
     paddingBottom: 18,
     width: '100%',
@@ -893,10 +904,10 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   festiveCardTitle: {
-    fontSize: 17,
-    fontWeight: '500',
-    color: ORANGE,
-    letterSpacing: -0.4,
+    fontSize: 16,
+    fontWeight: '700',
+    color: BROWN,
+    letterSpacing: -0.2,
     textAlign: 'center',
     marginBottom: 10,
   },
