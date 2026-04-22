@@ -8,6 +8,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { DonutChart } from '@/components/donut-chart';
 import { RECIPES, type Recipe } from '@/data/recipes';
 import {
   getCurrentUserId,
@@ -34,51 +35,6 @@ const ORANGE = '#ffb259';
 const GREEN = '#c7e890';
 const BROWN = '#7a4720';
 const HERO_HEIGHT = 300;
-
-// ─── Pie Chart ────────────────────────────────────────────────────────────────
-
-function describeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number) {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const x1 = cx + r * Math.cos(toRad(startAngle - 90));
-  const y1 = cy + r * Math.sin(toRad(startAngle - 90));
-  const x2 = cx + r * Math.cos(toRad(endAngle - 90));
-  const y2 = cy + r * Math.sin(toRad(endAngle - 90));
-  const large = endAngle - startAngle > 180 ? 1 : 0;
-  return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
-}
-
-function MacroPieChart({
-  carbs,
-  fats,
-  protein,
-}: {
-  carbs: number;
-  fats: number;
-  protein: number;
-}) {
-  const size = 130;
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size / 2 - 4;
-
-  const carbDeg = (carbs / 100) * 360;
-  const fatDeg = (fats / 100) * 360;
-  const protDeg = (protein / 100) * 360;
-
-  const carbStart = 0;
-  const fatStart = carbDeg;
-  const protStart = carbDeg + fatDeg;
-
-  return (
-    <Svg width={size} height={size}>
-      <Path d={describeArc(cx, cy, r, carbStart, carbStart + carbDeg)} fill="#ffb259" />
-      <Path d={describeArc(cx, cy, r, fatStart, fatStart + fatDeg)} fill="#7a4720" />
-      <Path d={describeArc(cx, cy, r, protStart, protStart + protDeg)} fill="#c7e890" />
-      {/* inner hole for donut look */}
-      <Circle cx={cx} cy={cy} r={r * 0.5} fill={CREAM} />
-    </Svg>
-  );
-}
 
 // ─── Calorie Donut ────────────────────────────────────────────────────────────
 
@@ -131,6 +87,15 @@ function CalorieDonut({ used, goal }: { used: number; goal: number }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 type Tab = 'recipe' | 'facts';
+type MacroKey = 'carbs' | 'fats' | 'protein';
+
+// Standard Atwater calorie-per-gram constants — used to back-derive the
+// actual gram values for a recipe from its calorie total + percent splits
+// so the community/curated detail screen can show grams (not just %),
+// matching the AI-generated recipe card.
+const KCAL_PER_G_CARBS = 4;
+const KCAL_PER_G_FAT = 9;
+const KCAL_PER_G_PROTEIN = 4;
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -138,6 +103,7 @@ export default function RecipeDetailScreen() {
   const insets = useSafeAreaInsets();
   const [bookmarked, setBookmarked] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('recipe');
+  const [activeMacro, setActiveMacro] = useState<MacroKey | null>(null);
 
   // Load the bookmark state for the currently-signed-in user. Also reruns
   // when the user changes so the bookmark icon reflects the new account's
@@ -403,32 +369,67 @@ export default function RecipeDetailScreen() {
         {activeTab === 'facts' && (
           <View style={styles.tabContent}>
 
-            {/* Macronutrients */}
+            {/* Macronutrients — interactive donut matches the AI recipe screen */}
             <ThemedText style={styles.sectionHeader}>Macronutrients</ThemedText>
             <View style={styles.macroCard}>
-              <MacroPieChart
-                carbs={recipe.carbsPercent}
-                fats={recipe.fatsPercent}
-                protein={recipe.proteinPercent}
-              />
-              <View style={styles.macroLegend}>
-                <View style={styles.legendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: ORANGE }]} />
-                  <ThemedText style={styles.legendLabel}>Carbs</ThemedText>
-                  <ThemedText style={styles.legendPct}>{recipe.carbsPercent}%</ThemedText>
-                </View>
-                <View style={styles.legendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: BROWN }]} />
-                  <ThemedText style={styles.legendLabel}>Fats</ThemedText>
-                  <ThemedText style={styles.legendPct}>{recipe.fatsPercent}%</ThemedText>
-                </View>
-                <View style={styles.legendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: GREEN }]} />
-                  <ThemedText style={styles.legendLabel}>Protein</ThemedText>
-                  <ThemedText style={styles.legendPct}>{recipe.proteinPercent}%</ThemedText>
-                </View>
-                <ThemedText style={styles.calorieSmall}>{recipe.calories} kcal / serving</ThemedText>
-              </View>
+              {(() => {
+                // Back-derive grams from the calorie total + percent splits.
+                // Using standard Atwater factors (4/9/4 kcal per g). We round
+                // at the end so the numbers feel like real nutrition labels.
+                const kcal = recipe.calories;
+                const carbsG = Math.round((recipe.carbsPercent / 100) * kcal / KCAL_PER_G_CARBS);
+                const fatsG = Math.round((recipe.fatsPercent / 100) * kcal / KCAL_PER_G_FAT);
+                const proteinG = Math.round((recipe.proteinPercent / 100) * kcal / KCAL_PER_G_PROTEIN);
+
+                const macroItems: { key: MacroKey; label: string; grams: number; color: string; pctVal: number }[] = [
+                  { key: 'carbs', label: 'Carbs', grams: carbsG, color: ORANGE, pctVal: recipe.carbsPercent },
+                  { key: 'fats', label: 'Fats', grams: fatsG, color: BROWN, pctVal: recipe.fatsPercent },
+                  { key: 'protein', label: 'Protein', grams: proteinG, color: GREEN, pctVal: recipe.proteinPercent },
+                ];
+                const active = macroItems.find((m) => m.key === activeMacro) ?? null;
+
+                return (
+                  <>
+                    <DonutChart
+                      segments={macroItems.map((m) => ({ key: m.key, value: m.grams, color: m.color }))}
+                      size={140}
+                      strokeWidth={22}
+                      activeKey={active?.key ?? null}>
+                      {active ? (
+                        <>
+                          <ThemedText style={styles.donutCenterValue}>{active.grams}g</ThemedText>
+                          <ThemedText style={styles.donutCenterLabel}>{active.label}</ThemedText>
+                        </>
+                      ) : (
+                        <>
+                          <ThemedText style={styles.donutCenterValue}>{kcal}</ThemedText>
+                          <ThemedText style={styles.donutCenterLabel}>kcal</ThemedText>
+                        </>
+                      )}
+                    </DonutChart>
+
+                    <View style={styles.macroLegend}>
+                      {macroItems.map((m) => {
+                        const isActive = activeMacro === m.key;
+                        return (
+                          <TouchableOpacity
+                            key={m.key}
+                            style={[styles.legendRow, isActive && styles.legendRowActive]}
+                            onPress={() => setActiveMacro((prev) => (prev === m.key ? null : m.key))}
+                            activeOpacity={0.75}>
+                            <View style={[styles.legendDot, { backgroundColor: m.color }]} />
+                            <ThemedText style={styles.legendLabel}>{m.label}</ThemedText>
+                            <ThemedText style={styles.legendPct}>
+                              {isActive ? `${m.grams}g` : `${m.pctVal}%`}
+                            </ThemedText>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      <ThemedText style={styles.calorieSmall}>Tap a macro to see grams · {kcal} kcal / serving</ThemedText>
+                    </View>
+                  </>
+                );
+              })()}
             </View>
 
             {/* Health Condition Alignment */}
@@ -722,6 +723,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+  },
+  legendRowActive: {
+    backgroundColor: '#fff4db',
+  },
+  donutCenterValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: BROWN,
+  },
+  donutCenterLabel: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
   },
   legendDot: {
     width: 12,
