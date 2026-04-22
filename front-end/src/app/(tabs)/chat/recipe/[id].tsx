@@ -299,9 +299,11 @@ export default function ChatRecipeDetailScreen() {
             </View>
 
             <ThemedText style={styles.sectionTitle}>Ingredients</ThemedText>
-            <View style={styles.listBlock}>
+            <View style={styles.listCard}>
               {recipe.ingredients.map((item, idx) => (
-                <View key={`${item}-${idx}`} style={styles.ingredientRow}>
+                <View
+                  key={`${item}-${idx}`}
+                  style={[styles.ingredientRow, idx === recipe.ingredients.length - 1 && styles.lastRow]}>
                   <View style={styles.checkCircle}>
                     <Ionicons name="checkmark" size={12} color="#fff" />
                   </View>
@@ -311,9 +313,11 @@ export default function ChatRecipeDetailScreen() {
             </View>
 
             <ThemedText style={[styles.sectionTitle, { marginTop: 20 }]}>Steps</ThemedText>
-            <View style={styles.listBlock}>
+            <View style={styles.listCard}>
               {recipe.steps.map((step, i) => (
-                <View key={`${step}-${i}`} style={styles.stepRow}>
+                <View
+                  key={`${step}-${i}`}
+                  style={[styles.stepRow, i === recipe.steps.length - 1 && styles.lastRow]}>
                   <View style={[styles.stepCircle, { backgroundColor: i % 2 === 0 ? ORANGE : GREEN_SOFT }]}>
                     <ThemedText style={styles.stepNumber}>{i + 1}</ThemedText>
                   </View>
@@ -593,8 +597,20 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, color: '#888', fontWeight: '500' },
   statValue: { fontSize: 13, fontWeight: '700', color: BROWN },
 
-  /* Lists (no card wrapper — matches curated recipe detail) */
-  listBlock: { gap: 0 },
+  /* Lists wrapped in a soft white card */
+  listCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  lastRow: { marginBottom: 0 },
   ingredientRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

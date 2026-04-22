@@ -369,25 +369,33 @@ export default function RecipeDetailScreen() {
 
             {/* Ingredients */}
             <ThemedText style={styles.sectionHeader}>Ingredients</ThemedText>
-            {recipe.ingredients.map((item, i) => (
-              <View key={i} style={styles.ingredientRow}>
-                <View style={styles.checkCircle}>
-                  <Ionicons name="checkmark" size={12} color="#fff" />
+            <View style={styles.listCard}>
+              {recipe.ingredients.map((item, i) => (
+                <View
+                  key={i}
+                  style={[styles.ingredientRow, i === recipe.ingredients.length - 1 && styles.lastRow]}>
+                  <View style={styles.checkCircle}>
+                    <Ionicons name="checkmark" size={12} color="#fff" />
+                  </View>
+                  <ThemedText style={styles.ingredientText}>{item}</ThemedText>
                 </View>
-                <ThemedText style={styles.ingredientText}>{item}</ThemedText>
-              </View>
-            ))}
+              ))}
+            </View>
 
             {/* Steps */}
             <ThemedText style={[styles.sectionHeader, { marginTop: 20 }]}>Steps</ThemedText>
-            {recipe.steps.map((step, i) => (
-              <View key={i} style={styles.stepRow}>
-                <View style={[styles.stepCircle, { backgroundColor: i % 2 === 0 ? ORANGE : GREEN }]}>
-                  <ThemedText style={styles.stepNumber}>{i + 1}</ThemedText>
+            <View style={styles.listCard}>
+              {recipe.steps.map((step, i) => (
+                <View
+                  key={i}
+                  style={[styles.stepRow, i === recipe.steps.length - 1 && styles.lastRow]}>
+                  <View style={[styles.stepCircle, { backgroundColor: i % 2 === 0 ? ORANGE : GREEN }]}>
+                    <ThemedText style={styles.stepNumber}>{i + 1}</ThemedText>
+                  </View>
+                  <ThemedText style={styles.stepText}>{step}</ThemedText>
                 </View>
-                <ThemedText style={styles.stepText}>{step}</ThemedText>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
         )}
 
@@ -621,6 +629,21 @@ const styles = StyleSheet.create({
     color: '#000',
     marginBottom: 12,
   },
+
+  /* Lists wrapped in a soft white card (shared with chat recipe detail) */
+  listCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  lastRow: { marginBottom: 0 },
 
   /* Ingredients */
   ingredientRow: {
