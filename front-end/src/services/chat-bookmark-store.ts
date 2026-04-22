@@ -10,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 
 import type { ChatRecipePayload } from '@/services/api';
+import { scopedKey, subscribeCurrentUser } from '@/services/current-user-store';
 import { aiGeneratedFoodImage, isStaleAiImage } from '@/utils/synthesize-recipe-facts';
 
 export interface ChatBookmark {
@@ -19,7 +20,10 @@ export interface ChatBookmark {
   created_at: string;
 }
 
-const STORAGE_KEY = 'nutriculture.chatBookmarks.v1';
+const BASE_STORAGE_KEY = 'nutriculture.chatBookmarks.v1';
+function storageKey(): string {
+  return scopedKey(BASE_STORAGE_KEY);
+}
 
 let bookmarks: ChatBookmark[] = [];
 let hydrated = false;
@@ -30,9 +34,19 @@ function notify() {
   listeners.forEach((l) => l());
 }
 
+// Wipe in-memory state whenever the signed-in user changes so the next
+// hydrate call reads from the new user's bucket instead of leaking data
+// from the previous account on the same device.
+subscribeCurrentUser(() => {
+  bookmarks = [];
+  hydrated = false;
+  hydrationPromise = null;
+  notify();
+});
+
 async function persist(): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(bookmarks));
+    await AsyncStorage.setItem(storageKey(), JSON.stringify(bookmarks));
   } catch {
     // non-fatal
   }
@@ -43,7 +57,7 @@ export function hydrateChatBookmarks(): Promise<void> {
   if (hydrationPromise) return hydrationPromise;
   hydrationPromise = (async () => {
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = await AsyncStorage.getItem(storageKey());
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {

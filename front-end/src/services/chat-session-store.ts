@@ -19,6 +19,7 @@ import {
   type ChatResponse as ApiChatResponse,
 } from '@/services/api';
 import { putChatRecipe } from '@/services/chat-recipe-store';
+import { scopedKey, subscribeCurrentUser } from '@/services/current-user-store';
 
 type Role = 'user' | 'assistant';
 
@@ -50,8 +51,14 @@ interface ChatSessionState {
   sending: boolean;
 }
 
-const TITLES_KEY = 'nutriculture.chat.suggestedTitles.v1';
-const SESSIONS_KEY = 'nutriculture.chat.sessions.v1';
+const TITLES_BASE_KEY = 'nutriculture.chat.suggestedTitles.v1';
+const SESSIONS_BASE_KEY = 'nutriculture.chat.sessions.v1';
+function titlesKey(): string {
+  return scopedKey(TITLES_BASE_KEY);
+}
+function sessionsKey(): string {
+  return scopedKey(SESSIONS_BASE_KEY);
+}
 const MAX_PERSISTED_TITLES = 60;
 const MAX_SESSIONS = 5;
 
@@ -86,6 +93,20 @@ function notify() {
   listeners.forEach((l) => l());
 }
 
+// Reset to a clean empty session whenever the signed-in user changes so
+// chats don't leak between accounts on the same device. The next mount of
+// the chat screen will call `hydrateChatSession()` and read from the new
+// user's AsyncStorage bucket.
+subscribeCurrentUser(() => {
+  state.sessions = [newEmptySession()];
+  state.activeIndex = 0;
+  state.suggestedTitles = [];
+  state.sending = false;
+  hydrated = false;
+  hydrationPromise = null;
+  notify();
+});
+
 function getActive(): ChatSession {
   return state.sessions[state.activeIndex];
 }
@@ -109,7 +130,7 @@ function deriveLabel(session: ChatSession): string {
 
 async function loadPersistedTitles(): Promise<string[]> {
   try {
-    const raw = await AsyncStorage.getItem(TITLES_KEY);
+    const raw = await AsyncStorage.getItem(titlesKey());
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -124,7 +145,7 @@ async function loadPersistedTitles(): Promise<string[]> {
 async function savePersistedTitles(titles: string[]): Promise<void> {
   try {
     const capped = titles.slice(-MAX_PERSISTED_TITLES);
-    await AsyncStorage.setItem(TITLES_KEY, JSON.stringify(capped));
+    await AsyncStorage.setItem(titlesKey(), JSON.stringify(capped));
   } catch {
     // non-fatal
   }
@@ -143,7 +164,7 @@ async function persistSessions(): Promise<void> {
       kept.unshift(active);
       kept.splice(MAX_SESSIONS); // trim if we pushed over cap
     }
-    await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(kept));
+    await AsyncStorage.setItem(sessionsKey(), JSON.stringify(kept));
   } catch {
     // non-fatal
   }
@@ -164,7 +185,7 @@ export function hydrateChatSession(): Promise<void> {
       }
     }
     try {
-      const raw = await AsyncStorage.getItem(SESSIONS_KEY);
+      const raw = await AsyncStorage.getItem(sessionsKey());
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -314,8 +335,8 @@ export async function resetChatSessionCompletely() {
   state.activeIndex = 0;
   state.suggestedTitles = [];
   try {
-    await AsyncStorage.removeItem(TITLES_KEY);
-    await AsyncStorage.removeItem(SESSIONS_KEY);
+    await AsyncStorage.removeItem(titlesKey());
+    await AsyncStorage.removeItem(sessionsKey());
   } catch {
     // ignore
   }

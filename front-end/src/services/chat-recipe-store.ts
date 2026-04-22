@@ -14,13 +14,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 
 import type { ChatRecipePayload } from '@/services/api';
+import { scopedKey, subscribeCurrentUser } from '@/services/current-user-store';
 import {
   aiGeneratedFoodImage,
   isStaleAiImage,
   seedFromId,
 } from '@/utils/synthesize-recipe-facts';
 
-const STORAGE_KEY = 'nutriculture.chatRecipes.v1';
+const BASE_STORAGE_KEY = 'nutriculture.chatRecipes.v1';
+function storageKey(): string {
+  return scopedKey(BASE_STORAGE_KEY);
+}
 const MAX_PERSISTED = 200; // cap to avoid unbounded growth
 
 interface PersistedEntry {
@@ -42,6 +46,17 @@ function notify() {
   listeners.forEach((l) => l());
 }
 
+// Reset in-memory caches whenever the signed-in user changes so cards from
+// the previous account don't leak into the new session.
+subscribeCurrentUser(() => {
+  recipes.clear();
+  recipeImages.clear();
+  recipeCreatedAt.clear();
+  hydrated = false;
+  hydrationPromise = null;
+  notify();
+});
+
 function snapshot(): PersistedEntry[] {
   const out: PersistedEntry[] = [];
   for (const [id, recipe] of recipes) {
@@ -58,7 +73,7 @@ function snapshot(): PersistedEntry[] {
 
 async function persist(): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot()));
+    await AsyncStorage.setItem(storageKey(), JSON.stringify(snapshot()));
   } catch {
     // non-fatal
   }
@@ -69,7 +84,7 @@ export function hydrateChatRecipes(): Promise<void> {
   if (hydrationPromise) return hydrationPromise;
   hydrationPromise = (async () => {
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = await AsyncStorage.getItem(storageKey());
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {

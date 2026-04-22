@@ -23,6 +23,7 @@ import {
   removeChatBookmark,
   subscribeChatBookmarks,
 } from '@/services/chat-bookmark-store';
+import { scopedKey, subscribeCurrentUser } from '@/services/current-user-store';
 import {
   getUserPosts,
   hydrateUserPosts,
@@ -37,8 +38,14 @@ const ORANGE_ACCENT = '#e46d3a';
 const GREEN = '#c7e890';
 const BROWN = '#7a4720';
 
-const BOOKMARKS_KEY = 'bookmarked_recipes';
-const LIKES_KEY = 'liked_recipes';
+const BOOKMARKS_BASE_KEY = 'bookmarked_recipes';
+const LIKES_BASE_KEY = 'liked_recipes';
+function bookmarksKey(): string {
+  return scopedKey(BOOKMARKS_BASE_KEY);
+}
+function likesKey(): string {
+  return scopedKey(LIKES_BASE_KEY);
+}
 
 type Section = 'liked' | 'saved';
 
@@ -342,28 +349,48 @@ export default function BookmarksScreen() {
     };
   }, []);
 
+  // Read the current user's saved+liked lists from their scoped keys. We
+  // wipe the local state BEFORE the read so cross-account switching can't
+  // briefly show the previous user's selections.
+  const loadSavedAndLiked = useCallback(async () => {
+    setSavedIds([]);
+    setLikedIds([]);
+    try {
+      const [rawSaved, rawLiked] = await Promise.all([
+        AsyncStorage.getItem(bookmarksKey()),
+        AsyncStorage.getItem(likesKey()),
+      ]);
+      setSavedIds(rawSaved ? JSON.parse(rawSaved) : []);
+      setLikedIds(rawLiked ? JSON.parse(rawLiked) : []);
+    } catch {
+      // ignore malformed storage
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      (async () => {
-        const [rawSaved, rawLiked] = await Promise.all([
-          AsyncStorage.getItem(BOOKMARKS_KEY),
-          AsyncStorage.getItem(LIKES_KEY),
-        ]);
-        setSavedIds(rawSaved ? JSON.parse(rawSaved) : []);
-        setLikedIds(rawLiked ? JSON.parse(rawLiked) : []);
-      })();
-    }, []),
+      void loadSavedAndLiked();
+    }, [loadSavedAndLiked]),
   );
+
+  // Reload when the signed-in user switches so we pull from the new
+  // account's bucket instead of re-rendering with stale ids.
+  useEffect(() => {
+    const unsubscribe = subscribeCurrentUser(() => {
+      void loadSavedAndLiked();
+    });
+    return unsubscribe;
+  }, [loadSavedAndLiked]);
 
   const handleRemoveSaved = async (id: string) => {
     const next = savedIds.filter(x => x !== id);
-    await AsyncStorage.setItem(BOOKMARKS_KEY, JSON.stringify(next));
+    await AsyncStorage.setItem(bookmarksKey(), JSON.stringify(next));
     setSavedIds(next);
   };
 
   const handleRemoveLiked = async (id: string) => {
     const next = likedIds.filter(x => x !== id);
-    await AsyncStorage.setItem(LIKES_KEY, JSON.stringify(next));
+    await AsyncStorage.setItem(likesKey(), JSON.stringify(next));
     setLikedIds(next);
   };
 

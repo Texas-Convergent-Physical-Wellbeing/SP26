@@ -24,6 +24,12 @@ import { ShimmerPlaceholder } from '@/components/shimmer-placeholder';
 import { ThemedText } from '@/components/themed-text';
 import { Recipe, RECIPES } from '@/data/recipes';
 import {
+  getCurrentUserId,
+  getCurrentUserName,
+  scopedKey,
+  subscribeCurrentUser,
+} from '@/services/current-user-store';
+import {
   getUserPosts,
   hydrateUserPosts,
   removeUserPost,
@@ -38,13 +44,35 @@ const GREEN_TAG = '#c7e890';
 const BROWN = '#7a4720';
 const BOOKMARK_ACTIVE = '#e2652f';
 
+// Per-user AsyncStorage key bases. Likes and bookmarks are routed through
+// `scopedKey` so each signed-in account has its own private state — a new
+// account never inherits the previous account's state on the same device.
+//
+// Comments are intentionally NOT scoped: comments on community posts are a
+// public conversation, so a comment posted by account A must be visible to
+// account B viewing the same post on the same device.
 const COMMENTS_KEY_PREFIX = 'recipe_comments_';
-const LIKES_KEY = 'liked_recipes';
-const BOOKMARKS_KEY = 'bookmarked_recipes';
+const LIKES_BASE_KEY = 'liked_recipes';
+const BOOKMARKS_BASE_KEY = 'bookmarked_recipes';
+
+function likesKey(): string {
+  return scopedKey(LIKES_BASE_KEY);
+}
+function bookmarksKey(): string {
+  return scopedKey(BOOKMARKS_BASE_KEY);
+}
 
 // ─── Comment Modal ─────────────────────────────────────────────────────────────
 
-type StoredComment = { id: string; body: string; created_at: string };
+type StoredComment = {
+  id: string;
+  body: string;
+  created_at: string;
+  /** Display name of the commenter at the time of writing. */
+  author_name?: string | null;
+  /** Supabase user id of the commenter. */
+  author_user_id?: string | null;
+};
 
 function CommentModal({
   recipeId,
@@ -92,6 +120,8 @@ function CommentModal({
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       body: text.trim(),
       created_at: new Date().toISOString(),
+      author_user_id: getCurrentUserId(),
+      author_name: getCurrentUserName(),
     };
     const next = [...comments, entry];
     await AsyncStorage.setItem(COMMENTS_KEY_PREFIX + recipeId, JSON.stringify(next));
@@ -124,6 +154,9 @@ function CommentModal({
                     <Ionicons name="person" size={12} color="#fff" />
                   </View>
                   <View style={styles.commentBodyWrap}>
+                    <ThemedText style={styles.commentAuthor}>
+                      {c.author_name ?? 'Someone'}
+                    </ThemedText>
                     <ThemedText style={styles.commentBody}>{c.body}</ThemedText>
                   </View>
                 </View>
@@ -241,6 +274,7 @@ function UserPostCard({
   post,
   bookmarked,
   liked,
+  isOwnPost,
   onToggleBookmark,
   onToggleLike,
   onPress,
@@ -250,6 +284,12 @@ function UserPostCard({
   post: UserPost;
   bookmarked: boolean;
   liked: boolean;
+  /**
+   * True when the currently-signed-in user also authored this post. Gates
+   * the "Yours" badge + trash icon + long-press-to-delete so other accounts
+   * can see the post in the community feed but not mutate it.
+   */
+  isOwnPost: boolean;
   onToggleBookmark: (id: string) => void;
   onToggleLike: (id: string) => void;
   onPress: (post: UserPost) => void;
@@ -278,7 +318,7 @@ function UserPostCard({
       style={[styles.card, { height: 220 }]}
       activeOpacity={0.92}
       onPress={() => onPress(post)}
-      onLongPress={confirmDelete}
+      onLongPress={isOwnPost ? confirmDelete : undefined}
       delayLongPress={350}>
       {!loaded && <ShimmerPlaceholder style={StyleSheet.absoluteFill} />}
       <Image
@@ -295,14 +335,16 @@ function UserPostCard({
       <View style={styles.cardOverlay} />
 
       <View style={styles.userTopActions}>
-        <TouchableOpacity
-          style={styles.deleteBtn}
-          onPress={e => { e.stopPropagation?.(); confirmDelete(); }}
-          hitSlop={8}
-          activeOpacity={0.75}
-          accessibilityLabel="Delete post">
-          <Ionicons name="trash-outline" size={15} color="#fff" />
-        </TouchableOpacity>
+        {isOwnPost && (
+          <TouchableOpacity
+            style={styles.deleteBtn}
+            onPress={e => { e.stopPropagation?.(); confirmDelete(); }}
+            hitSlop={8}
+            activeOpacity={0.75}
+            accessibilityLabel="Delete post">
+            <Ionicons name="trash-outline" size={15} color="#fff" />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={styles.bookmarkBtnInline}
           onPress={e => { e.stopPropagation?.(); onToggleBookmark(post.id); }}
@@ -316,22 +358,41 @@ function UserPostCard({
         </TouchableOpacity>
       </View>
 
-      <View
-        style={[
-          styles.tag,
-          { backgroundColor: ORANGE, flexDirection: 'row', alignItems: 'center', gap: 3 },
-        ]}>
-        {post.ai_origin && (
+      {isOwnPost && (
+        <View
+          style={[
+            styles.tag,
+            { backgroundColor: ORANGE, flexDirection: 'row', alignItems: 'center', gap: 3 },
+          ]}>
+          {post.ai_origin && (
+            <Ionicons name="sparkles" size={11} color="#fff" />
+          )}
+          <ThemedText style={[styles.tagText, { color: '#fff', fontWeight: '700' }]}>
+            {post.ai_origin ? 'AI · Yours' : 'Yours'}
+          </ThemedText>
+        </View>
+      )}
+      {!isOwnPost && post.ai_origin && (
+        <View
+          style={[
+            styles.tag,
+            { backgroundColor: ORANGE, flexDirection: 'row', alignItems: 'center', gap: 3 },
+          ]}>
           <Ionicons name="sparkles" size={11} color="#fff" />
-        )}
-        <ThemedText style={[styles.tagText, { color: '#fff', fontWeight: '700' }]}>
-          {post.ai_origin ? 'AI · Yours' : 'Yours'}
-        </ThemedText>
-      </View>
+          <ThemedText style={[styles.tagText, { color: '#fff', fontWeight: '700' }]}>
+            AI
+          </ThemedText>
+        </View>
+      )}
 
       <ThemedText style={styles.cardName} numberOfLines={1}>
         {post.title}
       </ThemedText>
+      {!isOwnPost && post.author_name && (
+        <ThemedText style={styles.byline} numberOfLines={1}>
+          by {post.author_name}
+        </ThemedText>
+      )}
 
       <View style={styles.cardActions}>
         <TouchableOpacity
@@ -363,6 +424,7 @@ export default function HomeScreen() {
   const [commentTarget, setCommentTarget] = useState<{ id: string; name: string } | null>(null);
   const [showProModal, setShowProModal] = useState(false);
   const [userPosts, setUserPosts] = useState<UserPost[]>(() => getUserPosts());
+  const [currentUserId, setCurrentUserIdState] = useState<string | null>(() => getCurrentUserId());
   const proShown = useRef(false);
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -391,31 +453,52 @@ export default function HomeScreen() {
     return unsubscribe;
   }, []);
 
+  // Load the current user's likes / bookmarks from their scoped keys. Wiping
+  // both sets BEFORE the read means we never show the previous account's
+  // hearts/bookmarks during the split-second between sign-in and hydration.
+  const loadLikesAndBookmarks = useCallback(async () => {
+    setLiked(new Set());
+    setBookmarked(new Set());
+    try {
+      const [rawLiked, rawBookmarks] = await Promise.all([
+        AsyncStorage.getItem(likesKey()),
+        AsyncStorage.getItem(bookmarksKey()),
+      ]);
+      if (rawLiked) setLiked(new Set(JSON.parse(rawLiked)));
+      if (rawBookmarks) setBookmarked(new Set(JSON.parse(rawBookmarks)));
+    } catch {
+      // ignore malformed storage
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      (async () => {
-        const [rawLiked, rawBookmarks] = await Promise.all([
-          AsyncStorage.getItem(LIKES_KEY),
-          AsyncStorage.getItem(BOOKMARKS_KEY),
-        ]);
-        if (rawLiked) setLiked(new Set(JSON.parse(rawLiked)));
-        if (rawBookmarks) setBookmarked(new Set(JSON.parse(rawBookmarks)));
-      })();
-    }, []),
+      void loadLikesAndBookmarks();
+    }, [loadLikesAndBookmarks]),
   );
+
+  // When the signed-in user changes, reset the in-memory sets and reload
+  // from the new account's scoped bucket.
+  useEffect(() => {
+    const unsubscribe = subscribeCurrentUser((uid) => {
+      setCurrentUserIdState(uid);
+      void loadLikesAndBookmarks();
+    });
+    return unsubscribe;
+  }, [loadLikesAndBookmarks]);
 
   const toggleBookmark = async (id: string) => {
     const next = new Set(bookmarked);
     if (next.has(id)) next.delete(id); else next.add(id);
     setBookmarked(next);
-    await AsyncStorage.setItem(BOOKMARKS_KEY, JSON.stringify([...next]));
+    await AsyncStorage.setItem(bookmarksKey(), JSON.stringify([...next]));
   };
 
   const toggleLike = async (id: string) => {
     const next = new Set(liked);
     if (next.has(id)) next.delete(id); else next.add(id);
     setLiked(next);
-    await AsyncStorage.setItem(LIKES_KEY, JSON.stringify([...next]));
+    await AsyncStorage.setItem(likesKey(), JSON.stringify([...next]));
   };
 
   const feedItems: FeedItem[] = [
@@ -434,8 +517,8 @@ export default function HomeScreen() {
     setBookmarked(nextBookmarks);
     setLiked(nextLikes);
     await Promise.all([
-      AsyncStorage.setItem(BOOKMARKS_KEY, JSON.stringify([...nextBookmarks])),
-      AsyncStorage.setItem(LIKES_KEY, JSON.stringify([...nextLikes])),
+      AsyncStorage.setItem(bookmarksKey(), JSON.stringify([...nextBookmarks])),
+      AsyncStorage.setItem(likesKey(), JSON.stringify([...nextLikes])),
       removeUserPost(id),
     ]);
   };
@@ -443,12 +526,18 @@ export default function HomeScreen() {
   const renderCard = (item: FeedItem) => {
     if (item.kind === 'user') {
       const p = item.post;
+      // Only the signed-in user who authored the post sees "Yours" and the
+      // delete button. Posts with no author_user_id (legacy) are treated as
+      // not-owned so they show up as community posts for everyone.
+      const isOwn =
+        !!currentUserId && !!p.author_user_id && p.author_user_id === currentUserId;
       return (
         <UserPostCard
           key={p.id}
           post={p}
           bookmarked={bookmarked.has(p.id)}
           liked={liked.has(p.id)}
+          isOwnPost={isOwn}
           onToggleBookmark={toggleBookmark}
           onToggleLike={toggleLike}
           onPress={(post) => router.push(`/recipe/${post.id}` as any)}
@@ -551,6 +640,15 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.4)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  byline: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.92)',
+    marginTop: 1,
+    fontWeight: '500',
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   bookmarkBtn: {
     position: 'absolute',
@@ -655,6 +753,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f0e4cb',
   },
+  commentAuthor: { fontSize: 12, fontWeight: '700', color: BROWN, marginBottom: 2 },
   commentBody: { fontSize: 13, lineHeight: 18, color: '#333' },
   commentInput: {
     backgroundColor: '#fff',

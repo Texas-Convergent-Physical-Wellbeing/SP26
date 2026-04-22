@@ -10,6 +10,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { RECIPES, type Recipe } from '@/data/recipes';
 import {
+  getCurrentUserId,
+  scopedKey,
+  subscribeCurrentUser,
+} from '@/services/current-user-store';
+import {
   getUserPosts,
   hydrateUserPosts,
   removeUserPost,
@@ -19,7 +24,10 @@ import { seedFromId, stockFoodImage, userPostToRecipe } from '@/utils/synthesize
 import { CommentsSection } from '@/components/comments-section';
 import { Alert } from 'react-native';
 
-const BOOKMARKS_KEY = 'bookmarked_recipes';
+const BOOKMARKS_BASE_KEY = 'bookmarked_recipes';
+function bookmarksKey(): string {
+  return scopedKey(BOOKMARKS_BASE_KEY);
+}
 
 const CREAM = '#fff4db';
 const ORANGE = '#ffb259';
@@ -131,22 +139,39 @@ export default function RecipeDetailScreen() {
   const [bookmarked, setBookmarked] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('recipe');
 
-  // Load saved bookmark state on mount
+  // Load the bookmark state for the currently-signed-in user. Also reruns
+  // when the user changes so the bookmark icon reflects the new account's
+  // state instead of leaking the previous one.
   useEffect(() => {
-    (async () => {
-      const raw = await AsyncStorage.getItem(BOOKMARKS_KEY);
-      const ids: string[] = raw ? JSON.parse(raw) : [];
-      setBookmarked(ids.includes(id ?? ''));
-    })();
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(bookmarksKey());
+        const ids: string[] = raw ? JSON.parse(raw) : [];
+        if (!cancelled) setBookmarked(ids.includes(id ?? ''));
+      } catch {
+        if (!cancelled) setBookmarked(false);
+      }
+    };
+    void load();
+    const unsubscribe = subscribeCurrentUser(() => {
+      setBookmarked(false);
+      void load();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [id]);
 
   const toggleBookmark = async () => {
-    const raw = await AsyncStorage.getItem(BOOKMARKS_KEY);
+    const key = bookmarksKey();
+    const raw = await AsyncStorage.getItem(key);
     const ids: string[] = raw ? JSON.parse(raw) : [];
     const next = bookmarked
       ? ids.filter(x => x !== id)
       : [...ids, id ?? ''];
-    await AsyncStorage.setItem(BOOKMARKS_KEY, JSON.stringify(next));
+    await AsyncStorage.setItem(key, JSON.stringify(next));
     setBookmarked(!bookmarked);
   };
 
@@ -157,12 +182,24 @@ export default function RecipeDetailScreen() {
     return unsub;
   }, []);
 
-  const { recipe, isUserPost } = useMemo<{ recipe: Recipe | null; isUserPost: boolean }>(() => {
+  const { recipe, isUserPost, authorName, authorUserId } = useMemo<{
+    recipe: Recipe | null;
+    isUserPost: boolean;
+    authorName: string | null;
+    authorUserId: string | null;
+  }>(() => {
     const prebaked = RECIPES.find((r) => r.id === id);
-    if (prebaked) return { recipe: prebaked, isUserPost: false };
+    if (prebaked) return { recipe: prebaked, isUserPost: false, authorName: null, authorUserId: null };
     const userPost = getUserPosts().find((p) => p.id === id);
-    if (userPost) return { recipe: userPostToRecipe(userPost), isUserPost: true };
-    return { recipe: null, isUserPost: false };
+    if (userPost) {
+      return {
+        recipe: userPostToRecipe(userPost),
+        isUserPost: true,
+        authorName: userPost.author_name ?? null,
+        authorUserId: userPost.author_user_id ?? null,
+      };
+    }
+    return { recipe: null, isUserPost: false, authorName: null, authorUserId: null };
     // userPostsTick forces re-resolution after hydration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, userPostsTick]);
@@ -244,7 +281,7 @@ export default function RecipeDetailScreen() {
                 <Ionicons name="chevron-back" size={22} color="#000" />
               </TouchableOpacity>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                {isUserPost && (
+                {isUserPost && (!authorUserId || authorUserId === getCurrentUserId()) && (
                   <TouchableOpacity
                     style={[styles.circleBtn, { backgroundColor: '#e44' }]}
                     onPress={handleDelete}
@@ -271,6 +308,11 @@ export default function RecipeDetailScreen() {
               <ThemedText style={styles.heroTitle} numberOfLines={2}>
                 {recipe.name}
               </ThemedText>
+              {isUserPost && authorName && (
+                <ThemedText style={styles.heroByline} numberOfLines={1}>
+                  by {authorName}
+                </ThemedText>
+              )}
               {recipe.tag && (
                 <View style={styles.heroTag}>
                   <ThemedText style={styles.heroTagText}>{recipe.tag}</ThemedText>
@@ -479,6 +521,15 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
     lineHeight: 32,
+  },
+  heroByline: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.92)',
+    marginTop: 4,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   heroTag: {
     alignSelf: 'flex-start',

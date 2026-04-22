@@ -2,6 +2,10 @@
  * Inline comments list + composer. Persists to AsyncStorage under the same
  * `recipe_comments_<id>` key that the home tab's CommentModal uses, so the
  * two views stay in sync (comments posted from either place show up in both).
+ *
+ * The key is intentionally NOT scoped per-user: comments on community posts
+ * are a public conversation, so a comment posted by account A must be
+ * visible to account B viewing the same post on the same device.
  */
 
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +15,10 @@ import React, { useCallback, useState } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import {
+  getCurrentUserId,
+  getCurrentUserName,
+} from '@/services/current-user-store';
 
 const COMMENTS_KEY_PREFIX = 'recipe_comments_';
 const ORANGE = '#ffb259';
@@ -20,6 +28,10 @@ interface StoredComment {
   id: string;
   body: string;
   created_at: string;
+  /** Display name of the commenter (snapshot at write time). */
+  author_name?: string | null;
+  /** Supabase user id of the commenter. */
+  author_user_id?: string | null;
 }
 
 function formatRelative(iso: string): string {
@@ -82,6 +94,10 @@ export function CommentsSection({
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       body: text.trim(),
       created_at: new Date().toISOString(),
+      // Snapshot the author so the comment row can show "by …" even after
+      // the commenter signs out and another account opens this post.
+      author_user_id: getCurrentUserId(),
+      author_name: getCurrentUserName(),
     };
     const next = [...comments, entry];
     try {
@@ -115,6 +131,9 @@ export function CommentsSection({
                 <Ionicons name="person" size={12} color="#fff" />
               </View>
               <View style={styles.bubble}>
+                <ThemedText style={styles.author}>
+                  {c.author_name ?? 'Someone'}
+                </ThemedText>
                 <ThemedText style={styles.body}>{c.body}</ThemedText>
                 <ThemedText style={styles.time}>{formatRelative(c.created_at)}</ThemedText>
               </View>
@@ -205,6 +224,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f0e4cb',
   },
+  author: { fontSize: 12, fontWeight: '700', color: BROWN, marginBottom: 2 },
   body: { fontSize: 13, lineHeight: 18, color: '#333' },
   time: { fontSize: 10, color: '#9a8260', marginTop: 2 },
   composer: {

@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image as ExpoImage } from 'expo-image';
 
 import type { ChatRecipePayload } from '@/services/api';
+import { getCurrentUserId, getCurrentUserName } from '@/services/current-user-store';
 import { aiGeneratedFoodImage, isStaleAiImage } from '@/utils/synthesize-recipe-facts';
 
 export interface UserPost {
@@ -33,6 +34,20 @@ export interface UserPost {
   ai_origin?: boolean;
   /** Snapshot of the AI recipe payload (macros, why-this-works, etc). */
   ai_recipe?: ChatRecipePayload | null;
+  /**
+   * Supabase user id of the account that created this post. Used to gate
+   * "Yours" badges and delete buttons so other signed-in accounts see the
+   * post in the community feed but can't mutate it. `null` = legacy post
+   * saved before this field existed.
+   */
+  author_user_id?: string | null;
+  /**
+   * Display name of the author at the time the post was created (snapshot
+   * — never updated even if the author renames themselves later). Surfaced
+   * as a "by …" byline on community cards so other accounts can see who
+   * posted each recipe. `null` = legacy post or anonymous demo session.
+   */
+  author_name?: string | null;
 }
 
 const STORAGE_KEY = 'nutriculture.userPosts.v1';
@@ -131,6 +146,11 @@ export async function addUserPost(
     imageUri: resolvedImageUri,
     id,
     created_at: new Date().toISOString(),
+    // Stamp with the currently-signed-in user so only they see the
+    // "Yours" badge / delete button on this post, and snapshot their
+    // display name so other accounts can see who authored it.
+    author_user_id: input.author_user_id ?? getCurrentUserId(),
+    author_name: input.author_name ?? getCurrentUserName(),
   };
   posts = [entry, ...posts];
   // Start prefetching the image immediately so the feed card shows a decoded
@@ -142,6 +162,17 @@ export async function addUserPost(
 }
 
 export async function removeUserPost(id: string): Promise<void> {
+  // Only let the current signed-in user delete posts they authored. Posts
+  // without an `author_user_id` are pre-scoping legacy posts — we allow
+  // those to be removed by anyone so users can clean them up. Callers
+  // that come from UI paths already gate the delete button on ownership,
+  // but this is a server-side-style check in case that UI is bypassed.
+  const target = posts.find((p) => p.id === id);
+  if (!target) return;
+  const currentUid = getCurrentUserId();
+  if (target.author_user_id && target.author_user_id !== currentUid) {
+    return;
+  }
   posts = posts.filter((p) => p.id !== id);
   await persist();
   notify();
